@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>项目支出管理</title>
+<style>
+:root {
+  --color-primary: #4A90D9; --color-primary-dark: #3570B0;
+  --color-expense: #FF6B6B; --color-expense-bg: #FFE8E8;
+  --color-warning: #F39C12; --color-warning-bg: #FFF8E1;
+  --color-danger: #E74C3C; --color-success: #00B894; --color-success-bg: #E6F9F5;
+  --color-bg: #F0F2F5; --color-surface: #FFFFFF;
+  --color-border: #E1E5EA; --color-text: #1A1A2E;
+  --color-text-secondary: #636E72; --color-text-muted: #B2BEC3;
+  --sidebar-width: 220px; --spacing-xs: 4px; --spacing-sm: 8px;
+  --spacing-md: 16px; --spacing-lg: 24px; --spacing-xl: 32px;
+  --radius-sm: 6px; --radius-md: 10px; --radius-lg: 16px;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+  --shadow-lg: 0 8px 30px rgba(0,0,0,0.12);
+  --font-family: -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  --font-size-xs: 0.75rem; --font-size-sm: 0.875rem; --font-size-md: 1rem;
+  --font-size-lg: 1.125rem; --font-size-xl: 1.375rem; --font-size-xxl: 2rem;
+  --transition-fast: 150ms ease; --transition-normal: 250ms ease;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font-family);background:var(--color-bg);color:var(--color-text);line-height:1.6;min-height:100vh;-webkit-font-smoothing:antialiased}
+
+.app-shell{display:flex;min-height:100vh;max-width:1280px;margin:0 auto}
+
+.sidebar{width:var(--sidebar-width);min-width:var(--sidebar-width);background:var(--color-surface);border-right:1px solid var(--color-border);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow-y:auto;z-index:100}
+.sidebar-header{padding:var(--spacing-md);border-bottom:1px solid var(--color-border);display:flex;align-items:center;gap:var(--spacing-sm);font-size:var(--font-size-md);font-weight:700;color:var(--color-primary-dark)}
+.sidebar-nav{flex:1;padding:var(--spacing-sm);overflow-y:auto}
+.sidebar-section-title{font-size:var(--font-size-xs);color:var(--color-text-muted);text-transform:uppercase;letter-spacing:.5px;padding:var(--spacing-sm);margin-top:var(--spacing-xs)}
+.sidebar-item{display:flex;align-items:center;gap:var(--spacing-sm);padding:10px var(--spacing-sm);border-radius:var(--radius-md);cursor:pointer;font-size:var(--font-size-sm);font-weight:500;color:var(--color-text-secondary);transition:all var(--transition-fast);position:relative;margin-bottom:2px}
+.sidebar-item:hover{background:var(--color-bg);color:var(--color-text)}
+.sidebar-item.active{background:var(--color-primary);color:#fff}
+.sidebar-item .proj-color{width:4px;height:20px;border-radius:2px;flex-shrink:0}
+.sidebar-item .proj-name{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sidebar-item .proj-count{font-size:var(--font-size-xs);opacity:.7;background:rgba(0,0,0,.08);padding:1px 8px;border-radius:99px}
+.sidebar-item.active .proj-count{background:rgba(255,255,255,.2)}
+.sidebar-item .proj-actions{display:none;gap:2px;flex-shrink:0}
+.sidebar-item:hover .proj-actions,.sidebar-item.active .proj-actions{display:flex}
+.sidebar-item .proj-act-btn{width:24px;height:24px;border:none;background:rgba(0,0,0,.06);border-radius:var(--radius-sm);cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center;transition:background var(--transition-fast);color:inherit}
+.sidebar-item.active .proj-act-btn{background:rgba(255,255,255,.2);color:#fff}
+.sidebar-item .proj-act-btn:hover{background:rgba(0,0,0,.15)}
+.sidebar-item.active .proj-act-btn:hover{background:rgba(255,255,255,.35)}
+.sidebar-footer{padding:var(--spacing-sm);border-top:1px solid var(--color-border)}
+.sidebar-footer .btn{width:100%;justify-content:center}
+
+.main-area{flex:1;display:flex;flex-direction:column;min-width:0;padding:var(--spacing-md);gap:var(--spacing-md)}
+
+.app-header{background:var(--color-surface);border-radius:var(--radius-lg);padding:var(--spacing-md) var(--spacing-lg);box-shadow:var(--shadow-sm);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--spacing-sm)}
+.app-header .current-project-name{font-size:var(--font-size-lg);font-weight:600;color:var(--color-text)}
+.month-selector input[type="month"]{padding:var(--spacing-sm) var(--spacing-md);border:1.5px solid var(--color-border);border-radius:var(--radius-md);font-size:var(--font-size-md);font-family:var(--font-family);background:var(--color-bg);color:var(--color-text);cursor:pointer;outline:none;transition:border-color var(--transition-fast)}
+.month-selector input[type="month"]:focus{border-color:var(--color-primary)}
+
+.tab-bar{display:flex;background:var(--color-surface);border-radius:var(--radius-lg);padding:var(--spacing-xs);box-shadow:var(--shadow-sm);gap:2px}
+.tab-btn{flex:1;padding:10px var(--spacing-sm);border:none;background:transparent;border-radius:var(--radius-md);cursor:pointer;font-size:var(--font-size-sm);font-family:var(--font-family);color:var(--color-text-secondary);transition:all var(--transition-fast);white-space:nowrap;font-weight:500;display:flex;align-items:center;justify-content:center;gap:4px}
+.tab-btn:hover{color:var(--color-text);background:var(--color-bg)}
+.tab-btn.active{background:var(--color-primary);color:#fff;box-shadow:var(--shadow-sm)}
+.tab-btn .tab-label-full{display:inline}
+.tab-btn .tab-label-short{display:none}
+.tab-content{display:none;flex:1}
+.tab-content.active{display:block}
+
+.card{background:var(--color-surface);border-radius:var(--radius-lg);padding:var(--spacing-lg);margin-bottom:var(--spacing-md);box-shadow:var(--shadow-sm)}
+.card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--spacing-md)}
+.card-title{font-size:var(--font-size-lg);font-weight:600;color:var(--color-text)}
+
+.btn{display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border:none;border-radius:var(--radius-md);cursor:pointer;font-size:var(--font-size-sm);font-family:var(--font-family);font-weight:500;transition:all var(--transition-fast)}
+.btn-primary{background:var(--color-primary);color:#fff}
+.btn-primary:hover{background:var(--color-primary-dark)}
+.btn-secondary{background:var(--color-bg);color:var(--color-text);border:1.5px solid var(--color-border)}
+.btn-secondary:hover{background:var(--color-border)}
+.btn-danger{background:var(--color-expense-bg);color:var(--color-danger)}
+.btn-danger:hover{background:#ffd4d4}
+.btn-sm{padding:5px 12px;font-size:var(--font-size-xs)}
+.btn-accent{background:var(--color-warning);color:#fff}
+.btn-accent:hover{background:#e08e0b}
+.btn-icon{width:32px;height:32px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:var(--radius-sm);background:transparent;border:none;cursor:pointer;font-size:var(--font-size-md);transition:background var(--transition-fast)}
+.btn-icon:hover{background:var(--color-bg)}
+.btn-icon.danger:hover{background:var(--color-expense-bg);color:var(--color-danger)}
+
+.form-group{margin-bottom:var(--spacing-md)}
+.form-group label{display:block;font-size:var(--font-size-sm);font-weight:500;margin-bottom:var(--spacing-xs);color:var(--color-text-secondary)}
+.form-input,.form-select,.form-textarea{width:100%;padding:10px 14px;border:1.5px solid var(--color-border);border-radius:var(--radius-md);font-size:var(--font-size-md);font-family:var(--font-family);background:var(--color-bg);color:var(--color-text);outline:none;transition:border-color var(--transition-fast)}
+.form-input:focus,.form-select:focus,.form-textarea:focus{border-color:var(--color-primary);box-shadow:0 0 0 3px rgba(74,144,217,.1)}
+.form-textarea{resize:vertical;min-height:60px}
+
+.filter-bar{display:flex;gap:var(--spacing-sm);flex-wrap:wrap;align-items:center;margin-bottom:var(--spacing-md)}
+.filter-bar .form-input,.filter-bar .form-select{width:auto;min-width:100px}
+.filter-bar .search-input{flex:1;min-width:150px}
+
+.proj-badge{display:inline-flex;align-items:center;gap:3px;padding:1px 8px;border-radius:99px;font-size:var(--font-size-xs);font-weight:500;white-space:nowrap}
+
+.txn-date-group{margin-bottom:var(--spacing-md)}
+.txn-date-header{font-size:var(--font-size-sm);font-weight:600;color:var(--color-text-secondary);padding:var(--spacing-xs) var(--spacing-sm);margin-bottom:var(--spacing-xs)}
+.txn-list{list-style:none}
+.txn-item{display:flex;align-items:center;gap:var(--spacing-sm);padding:12px var(--spacing-md);background:var(--color-surface);border-radius:var(--radius-md);margin-bottom:4px;transition:background var(--transition-fast)}
+.txn-item:hover{background:var(--color-bg)}
+.txn-icon{font-size:1.4rem;width:36px;height:36px;display:flex;align-items:center;justify-content:center;background:var(--color-bg);border-radius:var(--radius-md);flex-shrink:0}
+.txn-info{flex:1;min-width:0}
+.txn-info .txn-category{font-size:var(--font-size-sm);font-weight:500}
+.txn-info .txn-meta{display:flex;align-items:center;gap:var(--spacing-xs);flex-wrap:wrap}
+.txn-info .txn-note{font-size:var(--font-size-xs);color:var(--color-text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.txn-amount{font-weight:600;font-size:var(--font-size-md);white-space:nowrap;color:var(--color-expense)}
+.txn-attach{font-size:1.1rem;cursor:pointer;opacity:.5;transition:opacity var(--transition-fast);flex-shrink:0}
+.txn-attach:hover{opacity:1}
+.txn-actions{display:flex;gap:2px;opacity:0;transition:opacity var(--transition-fast)}
+.txn-item:hover .txn-actions{opacity:1}
+
+.attach-zone{border:2px dashed var(--color-border);border-radius:var(--radius-md);padding:var(--spacing-md);text-align:center;cursor:pointer;transition:all var(--transition-fast);margin-top:var(--spacing-sm)}
+.attach-zone:hover{border-color:var(--color-primary);background:#f8faff}
+.attach-zone.has-file{border-style:solid;border-color:var(--color-success);background:var(--color-success-bg)}
+.attach-zone .attach-icon{font-size:2rem;margin-bottom:var(--spacing-xs)}
+.attach-zone .attach-text{font-size:var(--font-size-xs);color:var(--color-text-muted)}
+.attach-preview{display:flex;align-items:center;gap:var(--spacing-sm);margin-top:var(--spacing-sm)}
+.attach-preview img{max-width:100%;max-height:150px;border-radius:var(--radius-sm)}
+.attach-preview .attach-info{flex:1;font-size:var(--font-size-xs)}
+.attach-preview .attach-name{font-weight:500}
+.attach-preview .attach-size{color:var(--color-text-muted)}
+
+.export-options{display:flex;gap:var(--spacing-md);flex-wrap:wrap;align-items:flex-end;margin-bottom:var(--spacing-lg)}
+.export-preview{max-height:300px;overflow-y:auto;background:var(--color-bg);border-radius:var(--radius-md);padding:var(--spacing-md);font-family:Consolas,"Courier New",monospace;font-size:var(--font-size-xs);white-space:pre;line-height:1.8}
+
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000;display:flex;align-items:center;justify-content:center;animation:fadeIn .2s ease}
+.modal{background:var(--color-surface);border-radius:var(--radius-lg);padding:var(--spacing-lg);width:90%;max-width:540px;max-height:90vh;overflow-y:auto;box-shadow:var(--shadow-lg);animation:slideUp .25s ease}
+.modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--spacing-md)}
+.modal-title{font-size:var(--font-size-lg);font-weight:600}
+.modal-close{width:32px;height:32px;border:none;background:var(--color-bg);border-radius:50%;cursor:pointer;font-size:1.2rem;display:flex;align-items:center;justify-content:center;transition:background var(--transition-fast)}
+.modal-close:hover{background:var(--color-border)}
+.modal-footer{display:flex;justify-content:flex-end;gap:var(--spacing-sm);margin-top:var(--spacing-lg)}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes slideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+
+.toast-container{position:fixed;top:20px;right:20px;z-index:2000;display:flex;flex-direction:column;gap:var(--spacing-sm)}
+.toast{padding:12px 20px;border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-lg);font-size:var(--font-size-sm);font-weight:500;display:flex;align-items:center;gap:var(--spacing-sm);animation:slideIn .3s ease;min-width:200px}
+.toast.success{border-left:4px solid var(--color-success)}
+.toast.error{border-left:4px solid var(--color-danger)}
+.toast.warning{border-left:4px solid var(--color-warning)}
+@keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+
+.empty-state{text-align:center;padding:var(--spacing-xl) var(--spacing-md);color:var(--color-text-muted)}
+.empty-state .empty-icon{font-size:3rem;margin-bottom:var(--spacing-md)}
+.empty-state .empty-text{font-size:var(--font-size-sm);margin-bottom:var(--spacing-md)}
+
+.cat-manage-list{list-style:none}
+.cat-manage-item{display:flex;align-items:center;gap:var(--spacing-sm);padding:8px var(--spacing-sm);border-bottom:1px solid var(--color-border)}
+
+.setup-banner{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;border-radius:var(--radius-lg);padding:var(--spacing-lg);margin-bottom:var(--spacing-md);box-shadow:var(--shadow-md)}
+.setup-banner h3{font-size:var(--font-size-lg);margin-bottom:var(--spacing-sm)}
+.setup-banner p{font-size:var(--font-size-sm);opacity:.9;margin-bottom:var(--spacing-md)}
+.setup-banner .btn{background:#fff;color:#764ba2}
+.setup-banner .btn:hover{background:#f0e6ff}
+
+.color-options{display:flex;gap:var(--spacing-sm);flex-wrap:wrap}
+.color-option{width:28px;height:28px;border-radius:50%;cursor:pointer;border:3px solid transparent;transition:all var(--transition-fast)}
+.color-option:hover{transform:scale(1.15)}
+.color-option.selected{border-color:var(--color-text);box-shadow:0 0 0 2px var(--color-surface),0 0 0 4px currentColor}
+.icon-options{display:flex;gap:4px;flex-wrap:wrap;max-height:120px;overflow-y:auto}
+.icon-option{width:32px;height:32px;border:2px solid transparent;border-radius:var(--radius-sm);cursor:pointer;font-size:1.1rem;display:flex;align-items:center;justify-content:center;background:var(--color-bg);transition:all var(--transition-fast)}
+.icon-option:hover{border-color:var(--color-primary)}
+.icon-option.selected{border-color:var(--color-primary);background:#EBF3FC}
+
+.quick-cat-create{display:flex;gap:var(--spacing-sm);align-items:center;padding:var(--spacing-sm);background:var(--color-bg);border-radius:var(--radius-md);margin-top:var(--spacing-sm)}
+.quick-cat-create input{flex:1}
+
+.mobile-project-strip{display:none;overflow-x:auto;gap:var(--spacing-sm);padding:var(--spacing-xs) 0;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.mobile-project-strip::-webkit-scrollbar{display:none}
+.mobile-project-chip{display:flex;align-items:center;gap:4px;padding:8px 14px;border-radius:99px;background:var(--color-surface);border:1.5px solid var(--color-border);font-size:var(--font-size-sm);font-weight:500;white-space:nowrap;cursor:pointer;transition:all var(--transition-fast);flex-shrink:0}
+.mobile-project-chip.active{background:var(--color-primary);color:#fff;border-color:var(--color-primary)}
+.mobile-project-chip .chip-color{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+
+@media(max-width:800px){
+  .sidebar{display:none}
+  .app-shell{flex-direction:column}
+  .main-area{padding:var(--spacing-sm)}
+  .mobile-project-strip{display:flex}
+  .app-header{padding:var(--spacing-sm) var(--spacing-md)}
+  .app-header .current-project-name{font-size:var(--font-size-md)}
+  .tab-btn{font-size:var(--font-size-xs);padding:8px 4px}
+  .tab-btn .tab-label-full{display:none}
+  .tab-btn .tab-label-short{display:inline}
+  .filter-bar{flex-direction:column}
+  .filter-bar .form-input,.filter-bar .form-select{width:100%}
+  .txn-actions{opacity:1}
+  .export-options{flex-direction:column}
+  .modal{width:95%;padding:var(--spacing-md);border-radius:var(--radius-lg) var(--radius-lg) 0 0;margin-top:auto;max-height:85vh}
+}
+@media(min-width:801px) and (max-width:1100px){
+  .app-shell{max-width:100%}
+  .sidebar{width:180px;min-width:180px}
+  .main-area{padding:var(--spacing-sm)}
+}
+</style>
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header"><span>💼</span> 项目支出</div>
+    <nav class="sidebar-nav" id="sidebarNav">
+      <div class="sidebar-item active" data-project="__all__" id="sidebarItemAll"><span>📊</span> <span class="proj-name">全部项目</span><span class="proj-count" id="sidebarAllCount">0</span></div>
+      <div class="sidebar-section-title">项目列表</div>
+      <div id="sidebarProjectList"></div>
+    </nav>
+    <div class="sidebar-footer"><button class="btn btn-primary btn-sm" id="btnAddProject">+ 新建项目</button></div>
+  </aside>
+
+  <div class="main-area">
+    <div class="mobile-project-strip" id="mobileProjectStrip"></div>
+    <header class="app-header">
+      <div class="header-left"><span class="current-project-name" id="currentProjectLabel">📊 全部项目</span></div>
+      <div class="month-selector"><input type="month" id="globalMonth" title="选择月份"/></div>
+    </header>
+
+    <nav class="tab-bar">
+      <button class="tab-btn active" data-tab="transactions"><span>📝</span> <span class="tab-label-full">支出记录</span><span class="tab-label-short">记录</span></button>
+      <button class="tab-btn" data-tab="export"><span>📤</span> <span class="tab-label-full">数据导出</span><span class="tab-label-short">导出</span></button>
+    </nav>
+
+    <section class="tab-content active" id="tab-transactions">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">支出记录</span>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <button class="btn btn-accent btn-sm" id="btnManageCats">🏷️ 管理分类</button>
+            <button class="btn btn-primary" id="btnAddTransaction">+ 新增支出</button>
+          </div>
+        </div>
+        <div class="filter-bar">
+          <select class="form-select" id="filterCategory"><option value="all">全部分类</option></select>
+          <select class="form-select" id="filterProject"><option value="__inherit__">继承当前项目</option><option value="all">全部项目</option><option value="__none__">未归属</option></select>
+          <input type="text" class="form-input search-input" id="filterKeyword" placeholder="🔍 搜索备注或分类..."/>
+        </div>
+        <div id="transactionList"></div>
+      </div>
+    </section>
+
+    <section class="tab-content" id="tab-export">
+      <div class="card">
+        <div class="card-header"><span class="card-title">数据导出</span></div>
+        <div class="export-options">
+          <div class="form-group" style="margin-bottom:0;"><label for="exportStartMonth">开始月份</label><input type="month" class="form-input" id="exportStartMonth"/></div>
+          <div class="form-group" style="margin-bottom:0;"><label for="exportEndMonth">结束月份</label><input type="month" class="form-input" id="exportEndMonth"/></div>
+          <div class="form-group" style="margin-bottom:0;"><label for="exportProject">所属项目</label><select class="form-select" id="exportProject"><option value="all">全部项目</option><option value="__none__">仅未归属</option></select></div>
+          <button class="btn btn-primary" id="btnExportCSV">📥 导出 CSV</button>
+        </div>
+        <div class="card-header"><span class="card-title">数据预览</span></div>
+        <div class="export-preview" id="exportPreview">选择时间范围后显示预览...</div>
+      </div>
+      <div class="card" style="margin-top:var(--spacing-md);">
+        <div class="card-header"><span class="card-title">⚙️ 数据管理</span></div>
+        <p style="font-size:var(--font-size-sm);color:var(--color-text-secondary);margin-bottom:var(--spacing-md);">当前 <strong id="dataCount">0</strong> 条支出，<strong id="projectCount">0</strong> 个项目，<strong id="catCount">0</strong> 个分类，<strong id="attachCount">0</strong> 个附件。</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn btn-secondary btn-sm" id="btnClearAll">🗑️ 清除所有数据</button>
+          <button class="btn btn-secondary btn-sm" id="btnResetCategories">🔄 清空分类</button>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<div id="modalContainer"></div>
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+const BudgetApp = (()=>{
+'use strict';
+
+const PROJECT_COLORS=['#4A90D9','#E17055','#00B894','#6C5CE7','#F39C12','#E74C3C','#0984E3','#D63031','#00CEC9','#FD79A8','#636E72','#FDCB6E'];
+const PROJECT_ICONS=['📁','🚀','🎯','💡','🔧','📋','🏗️','🎨','📱','🌟','🔥','💎','🎓','🛠️','📊','⚡'];
+const CAT_ICONS=['🍔','🚗','🛒','🏠','🎮','💊','📚','📱','👥','📦','🤝','✈️','🖨️','📢','🔬','📌','💻','🔧','🏗️','📋'];
+const MAX_FILE_SIZE=10*1024*1024; // 10MB
+
+const Utils={
+  generateId(p){return `${p}_${Date.now()}_${Math.random().toString(36).slice(2,8)}`},
+  getCurrentMonth(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`},
+  formatCurrency(a){return `¥${Math.abs(a).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2})}`},
+  formatDate(d){const p=d.split('-');return p.length===3?`${parseInt(p[1])}月${parseInt(p[2])}日`:d},
+  escapeCSV(v){const s=String(v);return(s.includes(',')||s.includes('"')||s.includes('\n'))?`"${s.replace(/"/g,'""')}"`:s},
+  formatFileSize(b){if(b<1024)return b+' B';if(b<1048576)return (b/1024).toFixed(1)+' KB';return (b/1048576).toFixed(1)+' MB'},
+  debounce(fn,d=300){let t;return function(...a){clearTimeout(t);t=setTimeout(()=>fn.apply(this,a),d)}},
+  $(s,p=document){return p.querySelector(s)},
+  $$(s,p=document){return Array.from(p.querySelectorAll(s))}
+};
+
+/* ========== INDEXEDDB ATTACHMENT STORE ========== */
+const AttachDB={
+  DB_NAME:'ExpenseApp', STORE:'attachments', VERSION:1,
+  _db:null,
+
+  async open(){
+    if(this._db)return this._db;
+    return new Promise((resolve,reject)=>{
+      const req=indexedDB.open(this.DB_NAME,this.VERSION);
+      req.onupgradeneeded=(e)=>{const db=e.target.result;if(!db.objectStoreNames.contains(this.STORE))db.createObjectStore(this.STORE,{keyPath:'id'})};
+      req.onsuccess=(e)=>{this._db=e.target.result;resolve(this._db)};
+      req.onerror=()=>reject(req.error);
+    });
+  },
+
+  async save(id,file){
+    const db=await this.open();
+    return new Promise((resolve,reject)=>{
+      const reader=new FileReader();
+      reader.onload=()=>{
+        const tx=db.transaction(this.STORE,'readwrite');
+        const store=tx.objectStore(this.STORE);
+        store.put({id,fileName:file.name,fileType:file.type,fileSize:file.size,blob:reader.result});
+        tx.oncomplete=()=>resolve();
+        tx.onerror=()=>reject(tx.error);
+      };
+      reader.readAsArrayBuffer(file);
+    });
+  },
+
+  async get(id){
+    const db=await this.open();
+    return new Promise((resolve,reject)=>{
+      const tx=db.transaction(this.STORE,'readonly');
+      const store=tx.objectStore(this.STORE);
+      const req=store.get(id);
+      req.onsuccess=()=>resolve(req.result||null);
+      req.onerror=()=>reject(req.error);
+    });
+  },
+
+  async remove(id){
+    const db=await this.open();
+    return new Promise((resolve,reject)=>{
+      const tx=db.transaction(this.STORE,'readwrite');
+      const store=tx.objectStore(this.STORE);
+      store.delete(id);
+      tx.oncomplete=()=>resolve();
+      tx.onerror=()=>reject(tx.error);
+    });
+  },
+
+  async count(){
+    const db=await this.open();
+    return new Promise((resolve,reject)=>{
+      const tx=db.transaction(this.STORE,'readonly');
+      const store=tx.objectStore(this.STORE);
+      const req=store.count();
+      req.onsuccess=()=>resolve(req.result);
+      req.onerror=()=>reject(req.error);
+    });
+  },
+
+  async clear(){
+    const db=await this.open();
+    return new Promise((resolve,reject)=>{
+      const tx=db.transaction(this.STORE,'readwrite');
+      const store=tx.objectStore(this.STORE);
+      store.clear();
+      tx.oncomplete=()=>resolve();
+      tx.onerror=()=>reject(tx.error);
+    });
+  }
+};
+
+/* ========== STORE ========== */
+const Store={
+  KEYS:{TRANSACTIONS:'proj_v3_txns',CATEGORIES:'proj_v3_cats',ACTIVE_MONTH:'proj_active_month',PROJECTS:'proj_v3_projects',ACTIVE_PROJECT:'proj_active_project'},
+  _read(k){try{const r=localStorage.getItem(k);return r?JSON.parse(r):null}catch(e){return null}},
+  _write(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){Renderer.showToast('存储空间已满，请导出后清理。','error')}},
+
+  getAllTransactions(){return(this._read(this.KEYS.TRANSACTIONS)||[]).sort((a,b)=>b.date.localeCompare(a.date)||(b.createdAt||'').localeCompare(a.createdAt||''))},
+  addTransaction(t){const l=this.getAllTransactions();l.push(t);this._write(this.KEYS.TRANSACTIONS,l)},
+  updateTransaction(id,u){const l=this.getAllTransactions();const i=l.findIndex(t=>t.id===id);if(i===-1)return false;l[i]={...l[i],...u};this._write(this.KEYS.TRANSACTIONS,l);return true},
+  deleteTransaction(id){const l=this.getAllTransactions();const f=l.filter(t=>t.id!==id);if(f.length===l.length)return false;this._write(this.KEYS.TRANSACTIONS,f);return true},
+
+  getAllCategories(){return this._read(this.KEYS.CATEGORIES)||[]},
+  addCategory(c){const l=this.getAllCategories();l.push(c);this._write(this.KEYS.CATEGORIES,l)},
+  updateCategory(id,u){const l=this.getAllCategories();const i=l.findIndex(c=>c.id===id);if(i===-1)return false;l[i]={...l[i],...u};this._write(this.KEYS.CATEGORIES,l);return true},
+  deleteCategory(id){const l=this.getAllCategories();const f=l.filter(c=>c.id!==id);if(f.length===l.length)return false;this._write(this.KEYS.CATEGORIES,f);return true},
+  resetCategories(){this._write(this.KEYS.CATEGORIES,[])},
+
+  getAllProjects(){return this._read(this.KEYS.PROJECTS)||[]},
+  addProject(p){const l=this.getAllProjects();l.push(p);this._write(this.KEYS.PROJECTS,l)},
+  updateProject(id,u){const l=this.getAllProjects();const i=l.findIndex(p=>p.id===id);if(i===-1)return false;l[i]={...l[i],...u};this._write(this.KEYS.PROJECTS,l);return true},
+  deleteProject(id){const l=this.getAllProjects();const f=l.filter(p=>p.id!==id);if(f.length===l.length)return false;this._write(this.KEYS.PROJECTS,f);const txns=this.getAllTransactions();let ch=false;for(const t of txns){if(t.projectId===id){t.projectId=null;ch=true}}if(ch)this._write(this.KEYS.TRANSACTIONS,txns);return true},
+
+  getActiveProject(){return this._read(this.KEYS.ACTIVE_PROJECT)||'__all__'},
+  setActiveProject(id){this._write(this.KEYS.ACTIVE_PROJECT,id)},
+  getActiveMonth(){return this._read(this.KEYS.ACTIVE_MONTH)||Utils.getCurrentMonth()},
+  setActiveMonth(m){this._write(this.KEYS.ACTIVE_MONTH,m)},
+
+  clearAll(){localStorage.removeItem(this.KEYS.TRANSACTIONS);localStorage.removeItem(this.KEYS.CATEGORIES);localStorage.removeItem(this.KEYS.PROJECTS)}
+};
+
+/* ========== CALCULATOR ========== */
+const Calculator={
+  _filterByProject(txns,pid){if(pid==='__all__'||!pid)return txns;return txns.filter(t=>t.projectId===pid)},
+  getMonthlyExpense(txns,monthStr,pid){return this._filterByProject(txns.filter(t=>t.date.startsWith(monthStr)),pid).reduce((s,t)=>s+t.amount,0)},
+  getAvailableMonths(txns){const ms=new Set();for(const t of txns)ms.add(t.date.substring(0,7));ms.add(Utils.getCurrentMonth());return[...ms].sort()},
+  filterTransactions(txns,filters){
+    const ap=Store.getActiveProject();
+    return txns.filter(tx=>{
+      if(filters.month&&!tx.date.startsWith(filters.month))return false;
+      if(filters.categoryId&&filters.categoryId!=='all'&&tx.categoryId!==filters.categoryId)return false;
+      if(filters.projectId==='__inherit__'){if(ap!=='__all__'&&tx.projectId!==ap)return false}
+      else if(filters.projectId==='__none__'){if(tx.projectId)return false}
+      else if(filters.projectId&&filters.projectId!=='all'){if(tx.projectId!==filters.projectId)return false}
+      if(filters.keyword){const kw=filters.keyword.toLowerCase();const cat=Store.getAllCategories().find(c=>c.id===tx.categoryId);if(!(tx.note||'').toLowerCase().includes(kw)&&!(cat?cat.name:'').toLowerCase().includes(kw))return false}
+      return true;
+    });
+  }
+};
+
+/* ========== RENDERER ========== */
+const Renderer={
+  renderSidebar(){
+    const projects=Store.getAllProjects(),ap=Store.getActiveProject(),month=Store.getActiveMonth(),txns=Store.getAllTransactions();
+    const ai=Utils.$('#sidebarItemAll');if(ai){ai.classList.toggle('active',ap==='__all__');Utils.$('#sidebarAllCount').textContent=txns.filter(t=>t.date.startsWith(month)).length}
+    const ct=Utils.$('#sidebarProjectList');
+    if(!projects.length){ct.innerHTML='<div style="padding:12px;text-align:center;color:var(--color-text-muted);font-size:var(--font-size-xs);">暂无项目<br/>点击下方按钮创建</div>'}
+    else{
+      let h='';
+      for(const p of projects){
+        const cnt=txns.filter(t=>t.projectId===p.id&&t.date.startsWith(month)).length;
+        h+=`<div class="sidebar-item ${ap===p.id?'active':''}" onclick="BudgetApp._selectProject('${p.id}')"><span class="proj-color" style="background:${p.color};"></span><span>${p.icon}</span><span class="proj-name">${Renderer._esc(p.name)}</span><span class="proj-count">${cnt}</span><span class="proj-actions"><button class="proj-act-btn" onclick="event.stopPropagation();BudgetApp._editProject('${p.id}')" title="编辑">✏️</button><button class="proj-act-btn" onclick="event.stopPropagation();BudgetApp._deleteProject('${p.id}')" title="删除">🗑️</button></span></div>`;
+      }
+      ct.innerHTML=h;
+    }
+    this._renderMobileStrip(projects,ap);
+  },
+
+  _renderMobileStrip(projects,ap){
+    const st=Utils.$('#mobileProjectStrip');
+    let h=`<div class="mobile-project-chip ${ap==='__all__'?'active':''}" onclick="BudgetApp._selectProject('__all__')"><span>📊</span>全部</div>`;
+    for(const p of projects)h+=`<div class="mobile-project-chip ${ap===p.id?'active':''}" onclick="BudgetApp._selectProject('${p.id}')"><span class="chip-color" style="background:${p.color};"></span><span>${p.icon}</span>${Renderer._esc(p.name)}</div>`;
+    h+=`<div class="mobile-project-chip" onclick="BudgetApp._showProjectModal(null)" style="border-style:dashed;">+ 新建</div>`;
+    st.innerHTML=h;
+  },
+
+  renderTransactions(){
+    const month=Store.getActiveMonth(),txns=Store.getAllTransactions(),cats=Store.getAllCategories(),projects=Store.getAllProjects();
+    const cm={};for(const c of cats)cm[c.id]=c;
+    const pm={};for(const p of projects)pm[p.id]=p;
+    const fc=Utils.$('#filterCategory').value,fp=Utils.$('#filterProject').value,fk=Utils.$('#filterKeyword').value.trim();
+    const filters={month,categoryId:fc,projectId:fp,keyword:fk};
+    const filtered=Calculator.filterTransactions(txns,filters);
+
+    let co='<option value="all">全部分类</option>';
+    for(const c of cats)co+=`<option value="${c.id}" ${fc===c.id?'selected':''}>${c.icon} ${c.name}</option>`;
+    Utils.$('#filterCategory').innerHTML=co;
+
+    let po='<option value="__inherit__">继承当前项目</option><option value="all">全部项目</option><option value="__none__">仅未归属</option>';
+    for(const p of projects)po+=`<option value="${p.id}" ${fp===p.id?'selected':''}>${p.icon} ${p.name}</option>`;
+    Utils.$('#filterProject').innerHTML=po;
+
+    const ct=Utils.$('#transactionList');
+    if(!cats.length){ct.innerHTML=`<div class="empty-state"><div class="empty-icon">🏷️</div><div class="empty-text">尚未创建支出分类</div><button class="btn btn-accent btn-sm" onclick="BudgetApp._openSetupWizard()">🎯 快速设置分类</button></div>`;return}
+    if(!filtered.length){ct.innerHTML=`<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-text">${fk||fc!=='all'||(fp!=='__inherit__'&&fp!=='all')?'没有符合条件的支出记录':'本月暂无支出记录'}</div>${(!fk&&fc==='all'&&(fp==='__inherit__'||fp==='all'))?'<button class="btn btn-primary btn-sm">+ 新增第一笔支出</button>':''}</div>`;return}
+
+    const groups={};
+    for(const t of filtered){if(!groups[t.date])groups[t.date]=[];groups[t.date].push(t)}
+
+    let html='';
+    for(const date of Object.keys(groups).sort().reverse()){
+      html+=`<div class="txn-date-group"><div class="txn-date-header">${Utils.formatDate(date)} ${this._getDow(date)}</div><ul class="txn-list">`;
+      for(const t of groups[date]){
+        const cat=cm[t.categoryId]||{name:'已删除分类',icon:'❓'};
+        const proj=pm[t.projectId];
+        const badge=proj?`<span class="proj-badge" style="background:${proj.color}20;color:${proj.color};">${proj.icon} ${Renderer._esc(proj.name)}</span>`:'';
+        const hasAttach=t.attachment&&t.attachment.name;
+        html+=`<li class="txn-item">
+          <span class="txn-icon">${cat.icon}</span>
+          <div class="txn-info"><div class="txn-category">${cat.name}</div><div class="txn-meta">${badge}${t.note?`<span class="txn-note">${Renderer._esc(t.note)}</span>`:''}</div></div>
+          ${hasAttach?`<span class="txn-attach" onclick="BudgetApp._viewAttachment('${t.id}')" title="查看账单附件：${Renderer._esc(t.attachment.name)}">🧾</span>`:''}
+          <span class="txn-amount">${Utils.formatCurrency(t.amount)}</span>
+          <div class="txn-actions"><button class="btn-icon" onclick="BudgetApp._editTransaction('${t.id}')" title="编辑">✏️</button><button class="btn-icon danger" onclick="BudgetApp._deleteTransaction('${t.id}')" title="删除">🗑️</button></div></li>`;
+      }
+      html+=`</ul></div>`;
+    }
+    ct.innerHTML=html;
+  },
+
+  renderExport(){
+    const txns=Store.getAllTransactions(),projects=Store.getAllProjects(),cats=Store.getAllCategories(),months=Calculator.getAvailableMonths(txns),cur=Utils.getCurrentMonth();
+    if(months.length){Utils.$('#exportStartMonth').value=months[0];Utils.$('#exportEndMonth').value=months[months.length-1]}
+    else{Utils.$('#exportStartMonth').value=cur;Utils.$('#exportEndMonth').value=cur}
+    let po='<option value="all">全部项目</option><option value="__none__">仅未归属</option>';
+    for(const p of projects)po+=`<option value="${p.id}">${p.icon} ${Renderer._esc(p.name)}</option>`;
+    Utils.$('#exportProject').innerHTML=po;
+    Utils.$('#dataCount').textContent=txns.length;
+    Utils.$('#projectCount').textContent=projects.length;
+    Utils.$('#catCount').textContent=cats.length;
+    AttachDB.count().then(c=>{Utils.$('#attachCount').textContent=c}).catch(()=>{});
+    this._updateExportPreview();
+  },
+
+  _updateExportPreview(){
+    const sm=Utils.$('#exportStartMonth').value,em=Utils.$('#exportEndMonth').value,ep=Utils.$('#exportProject').value;
+    const projects=Store.getAllProjects();const pm={};for(const p of projects)pm[p.id]=p;
+    const cats=Store.getAllCategories();const cm={};for(const c of cats)cm[c.id]=c;
+    let txns=Store.getAllTransactions().filter(t=>{const m=t.date.substring(0,7);if(m<sm||m>em)return false;if(ep==='__none__'&&t.projectId)return false;if(ep&&ep!=='all'&&ep!=='__none__'&&t.projectId!==ep)return false;return true});
+    let csv='﻿日期,分类,项目,金额,备注,附件\n';
+    const prev=txns.slice(0,10);
+    for(const t of prev){
+      const cat=cm[t.categoryId];const cn=cat?cat.name:'已删除分类';
+      const proj=pm[t.projectId];const pn=proj?proj.name:(t.projectId?'':'未归属');
+      const an=t.attachment?t.attachment.name:'';
+      csv+=[t.date,cn,pn,(-t.amount).toFixed(2),Utils.escapeCSV(t.note||''),Utils.escapeCSV(an)].join(',')+'\n';
+    }
+    if(txns.length>10)csv+=`... 共 ${txns.length} 条记录`;
+    else if(!txns.length)csv+='(暂无数据)';
+    Utils.$('#exportPreview').textContent=csv;
+  },
+
+  showSetupWizard(){
+    const ch=`<p style="font-size:var(--font-size-sm);color:var(--color-text-secondary);margin-bottom:var(--spacing-md);">输入支出分类名称，用逗号或换行分隔。</p><div class="form-group"><label>📤 支出分类</label><textarea class="form-textarea" id="wizardCategories" rows="5" placeholder="例如：人力成本、物料采购、差旅费、办公费用、营销推广、外包服务、研发支出、其他支出"></textarea></div>`;
+    this.showModal('🎯 快速设置分类',ch,(ov)=>{const text=ov.querySelector('#wizardCategories').value.trim();if(!text){Renderer.showToast('请输入分类名称','warning');return false}const names=text.split(/[,，\n]/).map(s=>s.trim()).filter(s=>s.length>0);let cnt=0;for(let i=0;i<names.length;i++){Store.addCategory({id:Utils.generateId('cat'),name:names[i],icon:CAT_ICONS[i%CAT_ICONS.length],color:'#'+Math.floor(Math.random()*16777215).toString(16).padStart(6,'0'),createdAt:new Date().toISOString()});cnt++}Renderer.showToast(`已创建 ${cnt} 个分类`);Events._refreshCurrentTab()});
+  },
+
+  showProjectModal(project){
+    const isEdit=!!project,sc=project?project.color:PROJECT_COLORS[0],si=project?project.icon:PROJECT_ICONS[0];
+    const co=PROJECT_COLORS.map(c=>`<span class="color-option ${c===sc?'selected':''}" style="background:${c};color:${c};" data-color="${c}"></span>`).join('');
+    const io=PROJECT_ICONS.map(i=>`<span class="icon-option ${i===si?'selected':''}" data-icon="${i}">${i}</span>`).join('');
+    const ch=`<input type="hidden" id="projColor" value="${sc}"/><input type="hidden" id="projIcon" value="${si}"/>
+      <div class="form-group"><label for="projName">项目名称</label><input type="text" class="form-input" id="projName" placeholder="输入项目名称" value="${isEdit?Renderer._esc(project.name):''}"/></div>
+      <div class="form-group"><label for="projContact">联系人</label><input type="text" class="form-input" id="projContact" placeholder="姓名、电话等（选填）" value="${isEdit?Renderer._esc(project.contact||''):''}"/></div>
+      <div class="form-group"><label for="projDesc">项目描述（选填）</label><input type="text" class="form-input" id="projDesc" placeholder="简要描述" value="${isEdit?Renderer._esc(project.description||''):''}"/></div>
+      <div class="form-group"><label>图标</label><div class="icon-options">${io}</div></div>
+      <div class="form-group"><label>颜色</label><div class="color-options">${co}</div></div>`;
+    this.showModal(isEdit?'编辑项目':'新建项目',ch,(ov)=>{
+      const nm=ov.querySelector('#projName').value.trim();if(!nm){Renderer.showToast('请输入项目名称','warning');return false}
+      const contact=ov.querySelector('#projContact').value.trim(),desc=ov.querySelector('#projDesc').value.trim();
+      const cl=ov.querySelector('#projColor').value,ic=ov.querySelector('#projIcon').value;
+      if(isEdit){Store.updateProject(project.id,{name:nm,contact,description:desc,color:cl,icon:ic});Renderer.showToast('项目已更新')}
+      else{Store.addProject({id:Utils.generateId('proj'),name:nm,contact,description:desc,color:cl,icon:ic,status:'active',createdAt:new Date().toISOString()});Renderer.showToast('项目已创建')}
+      Renderer.renderSidebar();Events._refreshCurrentTab();
+    });
+    setTimeout(()=>{document.querySelectorAll('.color-option').forEach(el=>el.addEventListener('click',function(){document.querySelectorAll('.color-option').forEach(e=>e.classList.remove('selected'));this.classList.add('selected');const inp=document.querySelector('#projColor');if(inp)inp.value=this.dataset.color}));document.querySelectorAll('.icon-option').forEach(el=>el.addEventListener('click',function(){document.querySelectorAll('.icon-option').forEach(e=>e.classList.remove('selected'));this.classList.add('selected');const inp=document.querySelector('#projIcon');if(inp)inp.value=this.dataset.icon}))},50);
+  },
+
+  showModal(title,contentHTML,onSave){
+    const ov=document.createElement('div');ov.className='modal-overlay';
+    ov.innerHTML=`<div class="modal"><div class="modal-header"><span class="modal-title">${title}</span><button class="modal-close">&times;</button></div><div class="modal-body">${contentHTML}</div><div class="modal-footer"><button class="btn btn-secondary cancel-btn">取消</button><button class="btn btn-primary save-btn">保存</button></div></div>`;
+    document.body.appendChild(ov);
+    const close=()=>ov.remove();
+    ov.querySelector('.modal-close').onclick=close;ov.querySelector('.cancel-btn').onclick=close;
+    ov.querySelector('.save-btn').onclick=()=>{const r=onSave(ov);if(r!==false)close()};
+    ov.addEventListener('click',(e)=>{if(e.target===ov)close()});
+    document.addEventListener('keydown',function esc(e){if(e.key==='Escape'){close();document.removeEventListener('keydown',esc)}});
+  },
+
+  async viewAttachment(txnId){
+    try{const a=await AttachDB.get(txnId);if(!a){Renderer.showToast('附件不存在','warning');return}
+      const blob=new Blob([a.blob],{type:a.fileType});
+      const url=URL.createObjectURL(blob);
+      if(a.fileType.startsWith('image/')){const win=window.open('','_blank','width=800,height=600');if(win){win.document.write(`<!DOCTYPE html><html><head><title>${a.fileName}</title><style>body{margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#1a1a1a}img{max-width:100%;max-height:100vh;object-fit:contain}</style></head><body><img src="${url}" alt="${a.fileName}"/></body></html>`)}}
+      else{const aEl=document.createElement('a');aEl.href=url;aEl.download=a.fileName;aEl.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
+    }catch(e){Renderer.showToast('读取附件失败','error')}
+  },
+
+  showToast(msg,type='success',dur=2500){
+    const ct=Utils.$('#toastContainer'),t=document.createElement('div');t.className=`toast ${type}`;
+    const ic={success:'✅',error:'❌',warning:'⚠️'};t.innerHTML=`<span>${ic[type]||'ℹ️'}</span> ${msg}`;
+    ct.appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transform='translateX(100%)';t.style.transition='all 300ms ease';setTimeout(()=>t.remove(),300)},dur);
+  },
+
+  _esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML},
+  _getDow(ds){const d=new Date(ds+'T00:00:00');return['周日','周一','周二','周三','周四','周五','周六'][d.getDay()]||''}
+};
+
+/* ========== EVENTS ========== */
+const Events={
+  init(){this._bindTabs();this._bindMonthSelector();this._bindTransactions();this._bindExport();this._bindCategoryManagement();this._bindKeyboardShortcuts();this._bindDataManagement();this._bindProjectButtons()},
+
+  _bindTabs(){Utils.$$('.tab-btn').forEach(b=>b.addEventListener('click',()=>{Utils.$$('.tab-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');Utils.$$('.tab-content').forEach(x=>x.classList.remove('active'));Utils.$('#tab-'+b.dataset.tab).classList.add('active');window._currentTab=b.dataset.tab;this._refreshCurrentTab()}))},
+  _bindMonthSelector(){const inp=Utils.$('#globalMonth');inp.value=Store.getActiveMonth();inp.addEventListener('change',()=>{Store.setActiveMonth(inp.value);Renderer.renderSidebar();this._refreshCurrentTab()})},
+
+  _bindTransactions(){
+    Utils.$('#btnAddTransaction').addEventListener('click',()=>this._openTxnModal(null));
+    Utils.$('#filterCategory').addEventListener('change',()=>Renderer.renderTransactions());
+    Utils.$('#filterProject').addEventListener('change',()=>Renderer.renderTransactions());
+    Utils.$('#filterKeyword').addEventListener('input',Utils.debounce(()=>Renderer.renderTransactions(),300));
+  },
+
+  _openTxnModal(txn){
+    const isEdit=!!txn,cats=Store.getAllCategories(),projects=Store.getAllProjects(),ap=Store.getActiveProject();
+    let pendingFile=null; // Track file selected but not yet saved
+
+    const buildCatOpts=()=>{if(!cats.length)return'<option value="">-- 请先创建分类 --</option>';return cats.map(c=>`<option value="${c.id}" ${txn&&txn.categoryId===c.id?'selected':''}>${c.icon} ${c.name}</option>`).join('')};
+    const buildProjOpts=()=>{let o='<option value="">不归属项目</option>';for(const p of projects){const sel=(txn&&txn.projectId===p.id)||(!txn&&ap!=='__all__'&&ap===p.id);o+=`<option value="${p.id}" ${sel?'selected':''}>${p.icon} ${p.name}</option>`}return o};
+
+    const defDate=txn?txn.date:Utils.getCurrentMonth()+'-'+String(new Date().getDate()).padStart(2,'0');
+    const hasExisting=txn&&txn.attachment&&txn.attachment.name;
+
+    let ch=`<div class="form-group"><label for="modalDate">日期</label><input type="date" class="form-input" id="modalDate" value="${defDate}"/></div>
+      <div class="form-group"><label for="modalAmount">金额</label><input type="number" class="form-input" id="modalAmount" placeholder="0.00" min="0.01" step="0.01" value="${txn?txn.amount:''}"/></div>`;
+
+    if(!cats.length){ch+=`<div class="form-group"><label>分类</label><div style="padding:12px;background:var(--color-warning-bg);border-radius:var(--radius-md);text-align:center;"><p style="font-size:var(--font-size-sm);color:var(--color-text-secondary);margin-bottom:8px;">⚠️ 尚未创建任何分类</p><button type="button" class="btn btn-accent btn-sm" onclick="document.querySelector('.modal-overlay').remove();BudgetApp._openSetupWizard();">🎯 先去创建分类</button></div></div>`}
+    else{ch+=`<div class="form-group"><label for="modalCategory">分类</label><select class="form-select" id="modalCategory">${buildCatOpts()}</select>
+      <div class="quick-cat-create" id="quickCatCreate" style="display:none;"><input type="text" class="form-input" id="quickCatName" placeholder="新分类名称" style="flex:1;"/><input type="text" class="form-input" id="quickCatIcon" placeholder="图标" style="width:50px;text-align:center;" maxlength="2"/><button type="button" class="btn btn-sm btn-primary" id="btnQuickCat">添加</button></div>
+      <div style="font-size:var(--font-size-xs);color:var(--color-text-muted);margin-top:4px;"><a href="#" onclick="event.preventDefault();document.getElementById('quickCatCreate').style.display='flex';this.style.display='none';" id="linkQuickCat">+ 快速添加新分类</a></div></div>`}
+
+    ch+=`<div class="form-group"><label for="modalProject">所属项目</label><select class="form-select" id="modalProject">${buildProjOpts()}</select></div>
+      <div class="form-group"><label for="modalNote">备注</label><input type="text" class="form-input" id="modalNote" placeholder="选填" value="${txn?(txn.note||''):''}"/></div>`;
+
+    // Attachment zone
+    ch+=`<div class="form-group"><label>账单附件</label>
+      <div class="attach-zone${hasExisting?' has-file':''}" id="attachZone">
+        ${hasExisting?`<div class="attach-preview" id="attachPreview"><span style="font-size:1.5rem;">📄</span><div class="attach-info"><div class="attach-name">${Renderer._esc(txn.attachment.name)}</div><div class="attach-size">${Utils.formatFileSize(txn.attachment.size)}</div></div><button type="button" class="btn btn-sm btn-danger" id="btnRemoveAttach">✕ 移除</button></div>`
+        :`<div class="attach-icon">📎</div><div class="attach-text">点击或拖拽上传账单（支持图片/PDF，最大10MB）</div>`}
+      </div>
+      <input type="file" id="fileInput" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx" style="display:none;"/>
+    </div>`;
+
+    Renderer.showModal(isEdit?'编辑支出':'新增支出',ch,async(ov)=>{
+      const date=ov.querySelector('#modalDate').value;
+      const amount=parseFloat(ov.querySelector('#modalAmount').value);
+      const catSel=ov.querySelector('#modalCategory');const catId=catSel?catSel.value:'';
+      const projEl=ov.querySelector('#modalProject');const projId=projEl?(projEl.value||null):null;
+      const note=ov.querySelector('#modalNote').value.trim();
+      if(!date){Renderer.showToast('请选择日期','warning');return false}
+      if(isNaN(amount)||amount<=0){Renderer.showToast('请输入有效金额','warning');return false}
+      if(!catId){Renderer.showToast('请先创建分类','warning');return false}
+
+      // Handle attachment
+      let attachmentMeta=null;
+      const removeBtn=ov.querySelector('#btnRemoveAttach');
+      const wasRemoved=removeBtn&&removeBtn.dataset.removed==='1';
+      if(!wasRemoved){
+        if(pendingFile){attachmentMeta={name:pendingFile.name,type:pendingFile.type,size:pendingFile.size}}
+        else if(hasExisting){attachmentMeta=txn.attachment}
+      }
+
+      const txnData={date,amount,categoryId:catId,projectId:projId,note,attachment:attachmentMeta};
+
+      if(isEdit){
+        Store.updateTransaction(txn.id,txnData);
+        if(wasRemoved&&txn.attachment)await AttachDB.remove(txn.id).catch(()=>{});
+        if(pendingFile)await AttachDB.save(txn.id,pendingFile).catch(()=>{Renderer.showToast('附件保存失败','warning')});
+        Renderer.showToast('支出已更新');
+      }else{
+        const newId=Utils.generateId('txn');
+        Store.addTransaction({id:newId,...txnData,createdAt:new Date().toISOString()});
+        if(pendingFile)await AttachDB.save(newId,pendingFile).catch(()=>{Renderer.showToast('附件保存失败','warning')});
+        Renderer.showToast('支出已保存');
+      }
+      Renderer.renderSidebar();this._refreshCurrentTab();
+    });
+
+    // Setup file upload + quick category after render
+    setTimeout(()=>{
+      const az=document.querySelector('#attachZone'),fi=document.querySelector('#fileInput');
+      const showPreview=(file)=>{
+        az.classList.add('has-file');pendingFile=file;
+        const isImg=file.type.startsWith('image/');
+        az.innerHTML=`<div class="attach-preview" id="attachPreview">${isImg?`<img src="${URL.createObjectURL(file)}" alt="预览"/>`:'<span style="font-size:1.5rem;">📄</span>'}<div class="attach-info"><div class="attach-name">${Renderer._esc(file.name)}</div><div class="attach-size">${Utils.formatFileSize(file.size)}</div></div><button type="button" class="btn btn-sm btn-danger" id="btnRemoveAttach">✕ 移除</button></div>`;
+        bindRemoveBtn();
+      };
+
+      const bindRemoveBtn=()=>{
+        const rb=document.querySelector('#btnRemoveAttach');if(rb)rb.addEventListener('click',()=>{az.classList.remove('has-file');az.innerHTML=`<div class="attach-icon">📎</div><div class="attach-text">点击或拖拽上传账单（支持图片/PDF，最大10MB）</div>`;pendingFile=null;if(txn&&txn.attachment)rb.dataset.removed='1'});
+      };
+      bindRemoveBtn();
+
+      if(az&&!hasExisting){az.addEventListener('click',()=>fi.click());az.addEventListener('dragover',(e)=>{e.preventDefault();az.style.borderColor='var(--color-primary)'});az.addEventListener('dragleave',()=>{az.style.borderColor=''});
+        az.addEventListener('drop',(e)=>{e.preventDefault();az.style.borderColor='';const f=e.dataTransfer.files[0];if(f){if(f.size>MAX_FILE_SIZE){Renderer.showToast('文件超过10MB限制','warning');return}showPreview(f)}});
+      }
+      if(fi)fi.addEventListener('change',()=>{const f=fi.files[0];if(f){if(f.size>MAX_FILE_SIZE){Renderer.showToast('文件超过10MB限制','warning');return}showPreview(f)}});
+
+      const bqc=document.querySelector('#btnQuickCat');if(bqc)bqc.addEventListener('click',()=>{const ni=document.querySelector('#quickCatName'),ii=document.querySelector('#quickCatIcon');const nm=ni?ni.value.trim():'';if(!nm){Renderer.showToast('请输入分类名称','warning');return}Store.addCategory({id:Utils.generateId('cat'),name:nm,icon:(ii?ii.value.trim():'')||'📌',color:'#'+Math.floor(Math.random()*16777215).toString(16).padStart(6,'0'),createdAt:new Date().toISOString()});const cs=document.querySelector('#modalCategory');if(cs)cs.innerHTML=Store.getAllCategories().map(c=>`<option value="${c.id}" selected>${c.icon} ${c.name}</option>`).join('');document.querySelector('#quickCatCreate').style.display='none';if(ni)ni.value='';if(ii)ii.value='';document.querySelector('#linkQuickCat').style.display='inline';Renderer.showToast(`分类"${nm}"已添加`)});
+    },50);
+  },
+
+  _bindExport(){
+    Utils.$('#exportStartMonth').addEventListener('change',()=>Renderer._updateExportPreview());
+    Utils.$('#exportEndMonth').addEventListener('change',()=>Renderer._updateExportPreview());
+    Utils.$('#exportProject').addEventListener('change',()=>Renderer._updateExportPreview());
+    Utils.$('#btnExportCSV').addEventListener('click',()=>{const sm=Utils.$('#exportStartMonth').value,em=Utils.$('#exportEndMonth').value,ep=Utils.$('#exportProject').value;if(!sm||!em){Renderer.showToast('请选择时间范围','warning');return}if(sm>em){Renderer.showToast('开始月份不能晚于结束月份','warning');return}const projects=Store.getAllProjects();const pm={};for(const p of projects)pm[p.id]=p;const cats=Store.getAllCategories();const cm={};for(const c of cats)cm[c.id]=c;let txns=Store.getAllTransactions().filter(t=>{const m=t.date.substring(0,7);if(m<sm||m>em)return false;if(ep==='__none__'&&t.projectId)return false;if(ep&&ep!=='all'&&ep!=='__none__'&&t.projectId!==ep)return false;return true});if(!txns.length){Renderer.showToast('所选范围内没有支出记录','warning');return}let csv='﻿日期,分类,项目,金额,备注,附件\n';for(const t of txns){const cat=cm[t.categoryId];const cn=cat?cat.name:'已删除分类';const proj=pm[t.projectId];const pn=proj?proj.name:(t.projectId?'':'未归属');const an=t.attachment?t.attachment.name:'';csv+=[t.date,cn,pn,(-t.amount).toFixed(2),Utils.escapeCSV(t.note||''),Utils.escapeCSV(an)].join(',')+'\n'}const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`项目支出记录_${sm}_${em}.csv`;a.click();URL.revokeObjectURL(url);Renderer.showToast(`已导出 ${txns.length} 条记录`)});
+  },
+
+  _bindCategoryManagement(){Utils.$('#btnManageCats').addEventListener('click',()=>this._openCatModal())},
+
+  _openCatModal(){
+    const cats=Store.getAllCategories();let lh='';if(!cats.length)lh='<div class="empty-state"><div class="empty-icon">🏷️</div><div class="empty-text">暂无分类，请在下方添加</div></div>';else{lh='<ul class="cat-manage-list">';for(const c of cats)lh+=`<li class="cat-manage-item"><span style="font-size:1.2rem;">${c.icon}</span><span style="font-size:var(--font-size-sm);font-weight:500;">${c.name}</span><button class="btn-icon" data-edit-cat="${c.id}" title="编辑">✏️</button><button class="btn-icon danger" data-delete-cat="${c.id}" title="删除">🗑️</button></li>`;lh+='</ul>'}
+    const ch=`<div class="form-group"><label>添加新分类</label><div style="display:flex;gap:8px;"><input type="text" class="form-input" id="newCatName" placeholder="分类名称" style="flex:1;"/><input type="text" class="form-input" id="newCatIcon" placeholder="图标" style="width:60px;text-align:center;" value="🏷️" maxlength="2"/></div></div><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--spacing-sm);"><label style="font-weight:500;">全部分类（${cats.length}个）</label>${cats.length?'<button class="btn btn-secondary btn-sm" id="btnBatchSetup">🎯 批量重新设置</button>':'<button class="btn btn-accent btn-sm" id="btnBatchSetup">🎯 批量设置分类</button>'}</div><div id="customCatList">${lh}</div><p style="font-size:var(--font-size-xs);color:var(--color-text-muted);margin-top:var(--spacing-sm);">提示：删除分类后，关联的支出记录将显示为"已删除分类"。</p>`;
+    Renderer.showModal('管理分类',ch,(ov)=>{const ni=ov.querySelector('#newCatName'),ii=ov.querySelector('#newCatIcon');if(ni&&ni.value.trim()){Store.addCategory({id:Utils.generateId('cat'),name:ni.value.trim(),icon:ii.value.trim()||'🏷️',color:'#'+Math.floor(Math.random()*16777215).toString(16).padStart(6,'0'),createdAt:new Date().toISOString()});Renderer.showToast('分类已添加');this._openCatModal();return false}});
+    setTimeout(()=>{document.querySelectorAll('[data-delete-cat]').forEach(b=>b.addEventListener('click',()=>{const cid=b.dataset.deleteCat,cat=Store.getAllCategories().find(c=>c.id===cid);if(confirm(`确定删除"${cat?cat.name:''}"？`)){Store.deleteCategory(cid);Renderer.showToast('分类已删除');document.querySelector('.modal-overlay')?.remove();this._openCatModal()}}));document.querySelectorAll('[data-edit-cat]').forEach(b=>b.addEventListener('click',()=>{const cid=b.dataset.editCat,cat=Store.getAllCategories().find(c=>c.id===cid);if(!cat)return;const nm=prompt('修改分类名称：',cat.name);if(nm&&nm.trim()){const ic=prompt('修改图标（可选）：',cat.icon);Store.updateCategory(cid,{name:nm.trim(),icon:ic||cat.icon});Renderer.showToast('分类已更新');document.querySelector('.modal-overlay')?.remove();this._openCatModal()}}));const bb=document.querySelector('#btnBatchSetup');if(bb)bb.addEventListener('click',()=>{document.querySelector('.modal-overlay')?.remove();Renderer.showSetupWizard()})},100);
+  },
+
+  _bindKeyboardShortcuts(){document.addEventListener('keydown',(e)=>{if(/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName))return;if(e.ctrlKey||e.metaKey){switch(e.key){case '1':e.preventDefault();this._switchTab('transactions');break;case '4':e.preventDefault();this._switchTab('export');break;case 'n':case 'N':e.preventDefault();this._openTxnModal(null);break}}})},
+
+  _bindDataManagement(){
+    Utils.$('#btnClearAll').addEventListener('click',()=>{if(confirm('确定清除所有数据？包括所有支出记录、项目、分类和附件。')){if(confirm('再次确认：此操作不可恢复！')){Store.clearAll();AttachDB.clear().catch(()=>{});Renderer.showToast('所有数据已清除');Renderer.renderSidebar();this._refreshCurrentTab()}}});
+    Utils.$('#btnResetCategories').addEventListener('click',()=>{if(confirm('确定清空所有分类？')){Store.resetCategories();Renderer.showToast('分类已清空');this._refreshCurrentTab()}});
+  },
+
+  _bindProjectButtons(){Utils.$('#btnAddProject').addEventListener('click',()=>Renderer.showProjectModal(null))},
+
+  _switchTab(tn){Utils.$$('.tab-btn').forEach(b=>b.classList.remove('active'));const tb=Utils.$(`.tab-btn[data-tab="${tn}"]`);if(tb)tb.classList.add('active');Utils.$$('.tab-content').forEach(c=>c.classList.remove('active'));Utils.$('#tab-'+tn).classList.add('active');window._currentTab=tn;this._refreshCurrentTab()},
+
+  _refreshCurrentTab(){const tab=window._currentTab||'transactions';const ap=Store.getActiveProject(),proj=Store.getAllProjects().find(p=>p.id===ap);Utils.$('#currentProjectLabel').textContent=proj?`${proj.icon} ${proj.name}`:'📊 全部项目';switch(tab){case'transactions':Renderer.renderTransactions();break;case'export':Renderer.renderExport();break;default:Renderer.renderTransactions()}}
+};
+
+function init(){
+  Utils.$('#globalMonth').value=Store.getActiveMonth();
+  window._currentTab='transactions';
+  Renderer.renderSidebar();Events.init();Events._refreshCurrentTab();
+
+  window.BudgetApp._switchTab=(t)=>Events._switchTab(t);
+  window.BudgetApp._selectProject=(pid)=>{Store.setActiveProject(pid);Renderer.renderSidebar();Events._refreshCurrentTab()};
+  window.BudgetApp._showProjectModal=(p)=>Renderer.showProjectModal(p);
+  window.BudgetApp._editProject=(pid)=>{const p=Store.getAllProjects().find(x=>x.id===pid);if(p)Renderer.showProjectModal(p)};
+  window.BudgetApp._deleteProject=(pid)=>{const p=Store.getAllProjects().find(x=>x.id===pid);if(!p)return;if(confirm(`确定删除项目"${p.name}"？关联支出将变为"未归属"。`)){Store.deleteProject(pid);if(Store.getActiveProject()===pid)Store.setActiveProject('__all__');Renderer.renderSidebar();Events._refreshCurrentTab();Renderer.showToast(`项目"${p.name}"已删除`)}};
+  window.BudgetApp._editTransaction=(id)=>{const t=Store.getAllTransactions().find(x=>x.id===id);if(t)Events._openTxnModal(t)};
+  window.BudgetApp._deleteTransaction=async(id)=>{if(confirm('确定删除这条支出记录？')){Store.deleteTransaction(id);await AttachDB.remove(id).catch(()=>{});Renderer.showToast('支出已删除');Renderer.renderSidebar();Events._refreshCurrentTab()}};
+  window.BudgetApp._filterByCategory=(cid)=>{Events._switchTab('transactions');Utils.$('#filterCategory').value=cid;Renderer.renderTransactions()};
+  window.BudgetApp._viewAttachment=(txnId)=>Renderer.viewAttachment(txnId);
+  window.BudgetApp._openSetupWizard=()=>Renderer.showSetupWizard();
+}
+
+return{init};
+})();
+document.addEventListener('DOMContentLoaded',BudgetApp.init);
+</script>
+</body>
+</html>
