@@ -977,7 +977,8 @@ async function runConversion() {
     const origTbls = (docXmlStr.match(/<w:tbl\b/g) || []).length;
 
     conversionStats = {
-      origAnchors, origHlinks, origHyperlinks, origOles, origTblCount: origTbls,
+      origAnchors, origHlinks, origHyperlinks, origOles,
+      _origTblTotal: origTbls,
       convertedAnchors: 0, removedHlinks: 0, removedHyperlinks: 0,
       convertedOles: 0, convertedTables: 0, totalTableCount: 0,
       cleanedTblFloat: 0, cleanedTblLink: 0,
@@ -1137,7 +1138,7 @@ function displayReport() {
 
   // 详细报告
   let reportHtml = '';
-  const anySource = s.origAnchors > 0 || s.origHlinks > 0 || s.origHyperlinks > 0 || s.origOles > 0 || (s.origTblCount || 0) > 0;
+  const anySource = s.origAnchors > 0 || s.origHlinks > 0 || s.origHyperlinks > 0 || s.origOles > 0 || (s._origTblTotal || 0) > 0;
   if (!anySource) {
     reportHtml += '<li class="info">ℹ 未检测到需要处理的悬浮元素、超链接或表格，文档可能已经是纯图格式</li>';
   } else {
@@ -1173,8 +1174,8 @@ function displayReport() {
       if ((s.cleanedTblLink || 0) > 0) {
         reportHtml += `<li>✅ 表格内 <strong>${s.cleanedTblLink}</strong> 个超链接将由Pass 2一并移除</li>`;
       }
-      if ((s.origTblCount || 0) > 0 && (s.cleanedTblFloat || 0) === 0 && (s.cleanedTblLink || 0) === 0) {
-        reportHtml += `<li class="info">ℹ ${s.origTblCount}个表格 — 无需清理，已保持原生格式</li>`;
+      if ((s._origTblTotal || 0) > 0 && (s.cleanedTblFloat || 0) === 0 && (s.cleanedTblLink || 0) === 0) {
+        reportHtml += `<li class="info">ℹ ${s._origTblTotal}个表格 — 无需清理，已保持原生格式</li>`;
       }
     }
   }
@@ -1188,7 +1189,7 @@ function displayReport() {
     reportHtml += '<li class="warn">⚠ 文档包含OLE对象但无预览图。请在Word中打开原文档，确认公式/结构式正常显示</li>';
   }
 
-  reportHtml += `<li class="info">ℹ 原始检测: ${s.origAnchors}浮动 · ${s.origHlinks}图片链接 · ${s.origHyperlinks}文本链接 · ${s.origOles}OLE对象 · ${s.origTblCount || 0}表格</li>`;
+  reportHtml += `<li class="info">ℹ 原始检测: ${s.origAnchors}浮动 · ${s.origHlinks}图片链接 · ${s.origHyperlinks}文本链接 · ${s.origOles}OLE对象 · ${s._origTblTotal || 0}表格</li>`;
 
   reportList.innerHTML = reportHtml;
   reportArea.classList.add('show');
