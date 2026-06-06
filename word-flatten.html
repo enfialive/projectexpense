@@ -105,9 +105,16 @@ a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
     <div class="pipeline-step" id="step-1"><div class="step-num">1</div>浮动→内联</div>
     <div class="pipeline-step" id="step-2"><div class="step-num">2</div>移除超链接</div>
     <div class="pipeline-step" id="step-3"><div class="step-num">3</div>OLE→图片</div>
-    <div class="pipeline-step" id="step-4"><div class="step-num">4</div>表格→纯图</div>
+    <div class="pipeline-step" id="step-4"><div class="step-num">4</div>表格清理</div>
     <div class="pipeline-step" id="step-5"><div class="step-num">5</div>打包下载</div>
   </div>
+</div>
+
+<div class="form-group" style="margin-top:12px">
+  <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:500;font-size:.9rem">
+    <input type="checkbox" id="chk-table-image" style="width:18px;height:18px;accent-color:var(--primary);">
+    将表格转为纯图PNG <span style="color:var(--text-light);font-weight:400;font-size:.8rem">（默认仅清理浮动/超链接，保留原生表格；勾选后每≤20行拆页渲染，处理较慢）</span>
+  </label>
 </div>
 
 <div class="btn-row" id="btn-row-convert" style="display:none">
@@ -670,9 +677,18 @@ function tableDataToHtml(tblData) {
   return html;
 }
 
-// 将 HTML 表格渲染为 PNG 图片 (SVG foreignObject → Canvas 方案)
+// 将 HTML 表格渲染为 PNG 图片 (SVG foreignObject → Canvas 方案, 30s超时)
 function renderTableToImage(htmlContent) {
   return new Promise((resolve) => {
+    let settled = false;
+    // 30秒超时保护
+    const timer = setTimeout(() => {
+      if (!settled) { settled = true; resolve(null); }
+    }, 30000);
+
+    function done(result) {
+      if (!settled) { settled = true; clearTimeout(timer); resolve(result); }
+    }
     // 1. 在离屏 div 中测量尺寸
     const measureDiv = document.createElement('div');
     measureDiv.style.cssText = 'position:absolute;left:-9999px;top:-9999px;visibility:hidden;';
@@ -718,13 +734,14 @@ function renderTableToImage(htmlContent) {
       // canvas → base64 PNG
       const dataUrl = canvas.toDataURL('image/png');
       const base64 = dataUrl.replace(/^data:image\/png;base64,/, '');
-      resolve({ base64: base64, width: width * SCALE, height: height * SCALE, emuW: Math.round(width * 9525), emuH: Math.round(height * 9525) });
+      done({ base64: base64, width: width * SCALE, height: height * SCALE, emuW: Math.round(width * 9525), emuH: Math.round(height * 9525) });
     };
 
     img.onerror = () => {
       URL.revokeObjectURL(url);
       document.body.removeChild(measureDiv);
-      resolve(null); // 渲染失败
+      try { document.body.removeChild(measureDiv); } catch(e) {}
+      done(null); // 渲染失败
     };
 
     img.src = url;
@@ -757,8 +774,30 @@ function findAndMarkTables(docXml, origXmlStr) {
   return { xml: modifiedXml, tableList };
 }
 
+// ===== Pass 4a: 原生表格清理 (默认, 快速) =====
+function cleanTablesNative(xmlStr) {
+  let modifiedXml = xmlStr;
+  let tblFloatCount = 0;
+  let tblHyperlinkCount = 0;
+
+  // 删除表格浮动定位 <w:tblpPr .../>
+  const tblpPrRe = /<w:tblpPr\b[^>]*\/>/g;
+  const m1 = modifiedXml.match(tblpPrRe);
+  if (m1) tblFloatCount = m1.length;
+  modifiedXml = modifiedXml.replace(tblpPrRe, '');
+
+  // 统计表格内超链接 (由Pass 2全局处理, 此处仅统计)
+  const tblBlocks = modifiedXml.match(/<w:tbl\b[\s\S]*?<\/w:tbl>/g) || [];
+  tblBlocks.forEach(block => {
+    const hls = block.match(/<w:hyperlink\b/g);
+    if (hls) tblHyperlinkCount += hls.length;
+  });
+
+  return { xml: modifiedXml, tblFloatCount, tblHyperlinkCount };
+}
+
 // ===== 表格分页常量 =====
-const ROWS_PER_PAGE = 35; // 每张纯图最多容纳的行数, 超过则自动拆分
+const ROWS_PER_PAGE = 20; // 每张纯图最多容纳的行数, 超过则自动拆分(表格→纯图模式)
 
 // 异步处理所有表格占位符 (超长表格自动拆分)
 async function convertTablesToImages(xmlStr, tableList, zip) {
@@ -888,6 +927,7 @@ async function runConversion() {
       origAnchors, origHlinks, origHyperlinks, origOles, origTblFloat: origTbls,
       convertedAnchors: 0, removedHlinks: 0, removedHyperlinks: 0,
       convertedOles: 0, convertedTables: 0, totalTableCount: 0,
+      cleanedTblFloat: 0, cleanedTblLink: 0,
       extraImagesAdded: 0
     };
     const origTblCount = origTbls;
@@ -896,15 +936,21 @@ async function runConversion() {
     let workingRels = relsStr;
     let workingContentTypes = contentTypesStr;
 
-    // ===== 前置处理: OLE对象 + 表格 → 占位符 (同一DOM遍历) =====
-    showSpinner('分析文档结构: OLE对象 + 表格检测…');
+    // ===== 前置处理: OLE对象 → 占位符 (DOM遍历) =====
+    showSpinner('分析文档结构…');
     const docXml = parser.parseFromString(workingXml, 'application/xml');
+    const useTableImage = document.getElementById('chk-table-image').checked;
 
     // 标记 OLE 对象
     const oleResult = findAndMarkOleObjects(docXml, relsXml, workingXml);
-    // 标记表格 (在同一个已修改DOM上, OLE已被替换为文本节点)
-    const tableResult = findAndMarkTables(docXml, workingXml);
-    workingXml = tableResult.xml; // 第二次序列化已包含OLE+表格占位符
+    workingXml = oleResult.xml;
+
+    // 仅在用户勾选时标记表格 (表格→纯图模式)
+    let tableResult = null;
+    if (useTableImage) {
+      tableResult = findAndMarkTables(docXml, workingXml);
+      workingXml = tableResult.xml; // 包含OLE+表格占位符
+    }
 
     // 处理OLE占位符
     let oleToInline = [];
@@ -933,14 +979,14 @@ async function runConversion() {
     }
     document.getElementById('step-3').classList.add('done');
 
-    // 处理表格占位符 → PNG纯图
+    // 处理表格: 原生清理 (默认) 或 纯图渲染 (可选)
     let tableImages = [];
-    if (tableResult.tableList.length > 0) {
-      showSpinner('Pass 4/4: 表格 → 纯图 (SVG渲染)…');
+    if (useTableImage && tableResult && tableResult.tableList.length > 0) {
+      showSpinner('Pass 4/4: 表格 → 纯图 (SVG渲染, 每页≤' + ROWS_PER_PAGE + '行)…');
       const pass4 = await convertTablesToImages(workingXml, tableResult.tableList, fileZip);
       workingXml = pass4.xml;
-      conversionStats.convertedTables = pass4.totalImages; // 图片总数(含拆分)
-      conversionStats.totalTableCount = pass4.tblCount;     // 原始表格数
+      conversionStats.convertedTables = pass4.totalImages;
+      conversionStats.totalTableCount = pass4.tblCount;
       tableImages = pass4.imagesAdded;
 
       if (tableImages.length > 0) {
@@ -951,12 +997,20 @@ async function runConversion() {
           relsInsert += `<Relationship Id="${img.relId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${mediaName}"/>`;
         });
         workingRels = workingRels.replace(/<\/Relationships>/, relsInsert + '</Relationships>');
-        // 确保 PNG 在 Content_Types 中声明
         if (workingContentTypes && !workingContentTypes.includes('Extension="png"')) {
           workingContentTypes = workingContentTypes.replace(/<\/Types>/,
             '<Default Extension="png" ContentType="image/png"/></Types>');
         }
       }
+    } else {
+      // 默认: 原生表格清理 (快速, 保留表格结构)
+      showSpinner('Pass 4/4: 表格清理 (去浮动/去链接)…');
+      const nativeResult = cleanTablesNative(workingXml);
+      workingXml = nativeResult.xml;
+      conversionStats.convertedTables = 0;
+      conversionStats.totalTableCount = 0;
+      conversionStats.cleanedTblFloat = nativeResult.tblFloatCount;
+      conversionStats.cleanedTblLink = nativeResult.tblHyperlinkCount;
     }
     document.getElementById('step-4').classList.add('done');
 
@@ -1010,20 +1064,27 @@ function displayReport() {
   if (!s) return;
 
   // 统计汇总
-  const totalChanges = s.convertedAnchors + s.removedHlinks + s.removedHyperlinks + s.convertedOles + s.convertedTables;
+  const totalChanges = s.convertedAnchors + s.removedHlinks + s.removedHyperlinks + s.convertedOles
+    + Math.max(s.convertedTables, (s.cleanedTblFloat || 0) + (s.cleanedTblLink || 0));
   const hasChanges = totalChanges > 0;
+  const useTableImage = document.getElementById('chk-table-image').checked;
+
+  const tableStatLabel = useTableImage ? '表格→纯图' : '表格清理';
+  const tableStatCount = useTableImage ? s.convertedTables : ((s.cleanedTblFloat || 0) + (s.cleanedTblLink || 0));
+  const tableStatClass = useTableImage ? 'modified' : '';
 
   summaryGrid.innerHTML = `
     <div class="summary-item"><div class="count">${s.convertedAnchors}</div><div class="label">浮动→内联</div></div>
     <div class="summary-item modified"><div class="count">${s.removedHlinks}</div><div class="label">图片超链接移除</div></div>
     <div class="summary-item modified"><div class="count">${s.removedHyperlinks}</div><div class="label">文本超链接移除</div></div>
     <div class="summary-item modified"><div class="count">${s.convertedOles}</div><div class="label">OLE→图片</div></div>
-    <div class="summary-item modified"><div class="count">${s.convertedTables}</div><div class="label">表格→纯图</div></div>
+    <div class="summary-item ${tableStatClass}"><div class="count">${tableStatCount}</div><div class="label">${tableStatLabel}</div></div>
   `;
 
   // 详细报告
   let reportHtml = '';
-  if (s.origAnchors === 0 && s.origHlinks === 0 && s.origHyperlinks === 0 && s.origOles === 0 && s.convertedTables === 0 && origTblCount === 0) {
+  const anySource = s.origAnchors > 0 || s.origHlinks > 0 || s.origHyperlinks > 0 || s.origOles > 0 || origTblCount > 0;
+  if (!anySource) {
     reportHtml += '<li class="info">ℹ 未检测到需要处理的悬浮元素、超链接或表格，文档可能已经是纯图格式</li>';
   } else {
     if (s.convertedAnchors > 0) {
@@ -1046,11 +1107,21 @@ function displayReport() {
       reportHtml += `<li class="warn">⚠ 检测到 ${s.origOles} 个OLE对象，但未能提取预览图（可能为链接式OLE对象）</li>`;
     }
 
-    if (s.convertedTables > 0) {
+    if (useTableImage && s.convertedTables > 0) {
       const splitNote = (s.totalTableCount && s.convertedTables > s.totalTableCount)
-        ? ` <span class="tag tag-info">${s.totalTableCount}个表格拆分为${s.convertedTables}张图片 (每页≤${ROWS_PER_PAGE}行)</span>`
+        ? ` <span class="tag tag-info">${s.totalTableCount}个表格拆分为${s.convertedTables}张图 (每页≤${ROWS_PER_PAGE}行)</span>`
         : '';
       reportHtml += `<li>✅ 已将 <strong>${s.convertedTables}</strong> 张表格纯图嵌入文档${splitNote}</li>`;
+    } else if (!useTableImage) {
+      if ((s.cleanedTblFloat || 0) > 0) {
+        reportHtml += `<li>✅ 已清理 <strong>${s.cleanedTblFloat}</strong> 个表格的浮动定位属性（w:tblpPr）</li>`;
+      }
+      if ((s.cleanedTblLink || 0) > 0) {
+        reportHtml += `<li>✅ 表格内 <strong>${s.cleanedTblLink}</strong> 个超链接将由Pass 2一并移除</li>`;
+      }
+      if (origTblCount > 0 && (s.cleanedTblFloat || 0) === 0 && (s.cleanedTblLink || 0) === 0) {
+        reportHtml += `<li class="info">ℹ ${origTblCount}个表格 — 无需清理，已保持原生格式</li>`;
+      }
     }
   }
 
@@ -1080,7 +1151,12 @@ function displayReport() {
   detail += `  图片超链接移除 (a:hlinkClick):     ${s.removedHlinks}\n`;
   detail += `  文本超链接移除 (w:hyperlink):      ${s.removedHyperlinks}\n`;
   detail += `  OLE对象→图片:                    ${s.convertedOles}\n`;
-  detail += `  表格→纯图 (PNG渲染):            ${s.convertedTables}\n`;
+  if (useTableImage) {
+    detail += `  表格→纯图 (PNG渲染):            ${s.convertedTables} 张\n`;
+  } else {
+    detail += `  表格浮动清理:                    ${s.cleanedTblFloat || 0} 个\n`;
+    detail += `  表格超链接:                      ${s.cleanedTblLink || 0} 个\n`;
+  }
   detail += `  总变更数:                         ${totalChanges}\n\n`;
   detail += '— 输出格式 —\n';
   detail += '  .docx (Office Open XML)\n';
@@ -1094,6 +1170,16 @@ function displayReport() {
 }
 
 // ==================== 按钮事件 ====================
+// 表格→纯图选项切换时更新管线标签
+document.getElementById('chk-table-image').addEventListener('change', function() {
+  const step4 = document.getElementById('step-4');
+  if (step4) {
+    step4.innerHTML = this.checked
+      ? '<div class="step-num">4</div>表格→纯图'
+      : '<div class="step-num">4</div>表格清理';
+  }
+});
+
 btnConvert.addEventListener('click', () => {
   if (!currentFile) return;
   runConversion();
