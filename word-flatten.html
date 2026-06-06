@@ -677,75 +677,129 @@ function tableDataToHtml(tblData) {
   return html;
 }
 
-// 将 HTML 表格渲染为 PNG 图片 (SVG foreignObject → Canvas 方案, 30s超时)
-function renderTableToImage(htmlContent) {
-  return new Promise((resolve) => {
-    let settled = false;
-    // 30秒超时保护
-    const timer = setTimeout(() => {
-      if (!settled) { settled = true; resolve(null); }
-    }, 30000);
+// 将表格数据直接渲染为 PNG (Canvas 2D 直接绘制, 无需 SVG/Blob/Image 链, 极快)
+function renderTableDataToCanvas(tblData) {
+  const rows = tblData.rows;
+  if (!rows || rows.length === 0) return null;
 
-    function done(result) {
-      if (!settled) { settled = true; clearTimeout(timer); resolve(result); }
-    }
-    // 1. 在离屏 div 中测量尺寸
-    const measureDiv = document.createElement('div');
-    measureDiv.style.cssText = 'position:absolute;left:-9999px;top:-9999px;visibility:hidden;';
-    measureDiv.innerHTML = htmlContent;
-    document.body.appendChild(measureDiv);
+  const FONT_SIZE = 11;
+  const FONT = FONT_SIZE + 'px SimSun, "Microsoft YaHei", "PingFang SC", sans-serif';
+  const PAD_X = 8;
+  const PAD_Y = 5;
+  const LINE_H = FONT_SIZE + 6;
+  const BORDER_W = 1;
+  const MIN_COL_W = 42;
+  const MAX_TOTAL_W = 1100; // 最大画布宽度
 
-    const tableEl = measureDiv.querySelector('table');
-    const naturalWidth = tableEl ? tableEl.offsetWidth : 600;
-    const naturalHeight = tableEl ? tableEl.offsetHeight : 400;
+  // 测量上下文
+  const mCanvas = document.createElement('canvas');
+  const mCtx = mCanvas.getContext('2d');
+  mCtx.font = FONT;
+  const boldFont = 'bold ' + FONT;
 
-    // 设置合理的最小/最大尺寸
-    const PADDING = 16;
-    const SCALE = 2; // 2x for retina quality
-    const width = Math.max(200, Math.min(naturalWidth, 1200)) + PADDING * 2;
-    const height = Math.max(40, Math.min(naturalHeight, 4000)) + PADDING * 2;
+  function stripTags(s) { return (s || '').replace(/<br>/gi, '\n').replace(/<[^>]+>/g, ''); }
 
-    const canvas = document.createElement('canvas');
-    canvas.width = width * SCALE;
-    canvas.height = height * SCALE;
-    const ctx = canvas.getContext('2d');
-    ctx.scale(SCALE, SCALE);
-    // 白色背景
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, width, height);
+  // 收集所有单元格的纯文本和格式
+  const cellInfo = []; // [{row, colIdx, lines, maxW, isHeader, bgColor, gridSpan}]
+  const colCount = Math.max(...rows.map(r => r.cells.reduce((s, c) => s + (c.gridSpan || 1), 0)), 1);
+  let maxRows = rows.length;
+  if (tblData.headerRow && maxRows > 0) maxRows++;
 
-    // 2. 构建 SVG (带良好样式)
-    const svgStr = '<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height + '">' +
-      '<foreignObject width="100%" height="100%">' +
-      '<div xmlns="http://www.w3.org/1999/xhtml" style="padding:' + PADDING + 'px;font-size:12px;">' +
-      htmlContent +
-      '</div></foreignObject></svg>';
-
-    // 3. 通过 Image 加载 SVG, 绘制到 canvas
-    const img = new Image();
-    const svgBlob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
-    const url = URL.createObjectURL(svgBlob);
-
-    img.onload = () => {
-      ctx.drawImage(img, 0, 0);
-      URL.revokeObjectURL(url);
-      document.body.removeChild(measureDiv);
-
-      // canvas → base64 PNG
-      const dataUrl = canvas.toDataURL('image/png');
-      const base64 = dataUrl.replace(/^data:image\/png;base64,/, '');
-      done({ base64: base64, width: width * SCALE, height: height * SCALE, emuW: Math.round(width * 9525), emuH: Math.round(height * 9525) });
-    };
-
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      document.body.removeChild(measureDiv);
-      try { document.body.removeChild(measureDiv); } catch(e) {}
-      done(null); // 渲染失败
-    };
-
-    img.src = url;
+  rows.forEach((row, ri) => {
+    let ci = 0;
+    const isHdr = tblData.headerRow && ri === 0;
+    row.cells.forEach(cell => {
+      const text = cell.text || '';
+      const lines = text.split('<br>');
+      // 测量每行宽度
+      let maxW = 0;
+      const cleanLines = lines.map(l => { const c = stripTags(l); mCtx.font = (isHdr ? boldFont : FONT); const w = mCtx.measureText(c).width; maxW = Math.max(maxW, w); return c; });
+      cellInfo.push({ ri, ci, lines: cleanLines, maxW, isHeader: isHdr, bgColor: cell.bgColor, gridSpan: cell.gridSpan || 1, vAlign: cell.vAlign });
+      ci += cell.gridSpan || 1;
+    });
   });
+
+  // 计算列宽
+  const colWidths = new Array(colCount).fill(MIN_COL_W);
+  cellInfo.forEach(inf => {
+    const perCol = Math.ceil((inf.maxW + PAD_X * 2) / inf.gridSpan);
+    for (let i = 0; i < inf.gridSpan && inf.ci + i < colCount; i++) {
+      colWidths[inf.ci + i] = Math.max(colWidths[inf.ci + i], perCol);
+    }
+  });
+
+  const totalW = colWidths.reduce((s, w) => s + w, 0) + BORDER_W * (colCount + 1);
+  const scale = totalW > MAX_TOTAL_W ? MAX_TOTAL_W / totalW : 1;
+  const scaledColW = colWidths.map(w => Math.round(w * scale));
+  const canvasW = scaledColW.reduce((s, w) => s + w, 0) + BORDER_W * (colCount + 1);
+
+  // 计算行高
+  const rowHeights = [];
+  let yAcc = BORDER_W;
+  for (let ri = 0; ri < rows.length; ri++) {
+    const cellsThisRow = cellInfo.filter(inf => inf.ri === ri);
+    const maxLines = Math.max(...cellsThisRow.map(inf => inf.lines.length), 1);
+    const h = maxLines * LINE_H + PAD_Y * 2;
+    rowHeights.push({ y: yAcc, h: h, cells: cellsThisRow });
+    yAcc += h + BORDER_W;
+  }
+  const canvasH = yAcc;
+
+  // 绘制
+  const canvas = document.createElement('canvas');
+  canvas.width = canvasW;
+  canvas.height = canvasH;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvasW, canvasH);
+
+  // 绘制网格和内容
+  rowHeights.forEach(rh => {
+    rh.cells.forEach(inf => {
+      // 单元格位置
+      let x0 = BORDER_W;
+      for (let i = 0; i < inf.ci; i++) x0 += scaledColW[i] + BORDER_W;
+      let cellW = 0;
+      for (let i = 0; i < inf.gridSpan && inf.ci + i < colCount; i++) cellW += scaledColW[inf.ci + i] + (i > 0 ? BORDER_W : 0);
+
+      // 背景色
+      if (inf.bgColor) {
+        ctx.fillStyle = inf.bgColor;
+        ctx.fillRect(x0, rh.y, cellW, rh.h);
+      }
+
+      // 绘制文字
+      ctx.fillStyle = '#000000';
+      ctx.font = inf.isHeader ? boldFont : FONT;
+      ctx.textBaseline = 'top';
+      const textX = x0 + PAD_X;
+      inf.lines.forEach((line, li) => {
+        if (li * LINE_H + PAD_Y + LINE_H > rh.h) return; // 超出单元格
+        ctx.fillText(line, textX, rh.y + PAD_Y + li * LINE_H);
+      });
+
+      // 绘制单元格边框
+      ctx.strokeStyle = '#555555';
+      ctx.lineWidth = BORDER_W;
+      ctx.strokeRect(x0, rh.y, cellW, rh.h);
+    });
+  });
+
+  // 表头底部加粗线
+  if (tblData.headerRow && rowHeights.length > 1) {
+    const hdrBottom = rowHeights[0].y + rowHeights[0].h;
+    ctx.strokeStyle = '#333333';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, hdrBottom);
+    ctx.lineTo(canvasW, hdrBottom);
+    ctx.stroke();
+  }
+
+  // → base64 PNG
+  const dataUrl = canvas.toDataURL('image/png');
+  const base64 = dataUrl.replace(/^data:image\/png;base64,/, '');
+  return { base64, width: canvasW, height: canvasH, emuW: Math.round(canvasW * 9525), emuH: Math.round(canvasH * 9525) };
 }
 
 // 在 DOM 中查找并标记表格 (用占位符替换)
@@ -834,19 +888,18 @@ async function convertTablesToImages(xmlStr, tableList, zip) {
       chunks.push(tbl.data);
     }
 
-    // 渲染每个分块
+    // 渲染每个分块 (Canvas 2D 直接绘制, 同步完成)
     let replacementXml = '';
     let chunkIdx = 0;
     for (const chunkData of chunks) {
       chunkIdx++;
-      const html = tableDataToHtml(chunkData);
 
       // 超长表格显示进度
       if (chunks.length > 1) {
         showSpinner('Pass 4/4: 表格' + tblCount + ' → 纯图 (' + chunkIdx + '/' + chunks.length + ' 页, 每页≤' + ROWS_PER_PAGE + '行)…');
       }
 
-      const renderResult = await renderTableToImage(html);
+      const renderResult = renderTableDataToCanvas(chunkData);
 
       if (!renderResult) {
         const fallbackText = '<w:r><w:t xml:space="preserve">[表格' + tblCount +
@@ -924,13 +977,12 @@ async function runConversion() {
     const origTbls = (docXmlStr.match(/<w:tbl\b/g) || []).length;
 
     conversionStats = {
-      origAnchors, origHlinks, origHyperlinks, origOles, origTblFloat: origTbls,
+      origAnchors, origHlinks, origHyperlinks, origOles, origTblCount: origTbls,
       convertedAnchors: 0, removedHlinks: 0, removedHyperlinks: 0,
       convertedOles: 0, convertedTables: 0, totalTableCount: 0,
       cleanedTblFloat: 0, cleanedTblLink: 0,
       extraImagesAdded: 0
     };
-    const origTblCount = origTbls;
 
     let workingXml = docXmlStr;
     let workingRels = relsStr;
@@ -1083,7 +1135,7 @@ function displayReport() {
 
   // 详细报告
   let reportHtml = '';
-  const anySource = s.origAnchors > 0 || s.origHlinks > 0 || s.origHyperlinks > 0 || s.origOles > 0 || origTblCount > 0;
+  const anySource = s.origAnchors > 0 || s.origHlinks > 0 || s.origHyperlinks > 0 || s.origOles > 0 || (s.origTblCount || 0) > 0;
   if (!anySource) {
     reportHtml += '<li class="info">ℹ 未检测到需要处理的悬浮元素、超链接或表格，文档可能已经是纯图格式</li>';
   } else {
@@ -1119,8 +1171,8 @@ function displayReport() {
       if ((s.cleanedTblLink || 0) > 0) {
         reportHtml += `<li>✅ 表格内 <strong>${s.cleanedTblLink}</strong> 个超链接将由Pass 2一并移除</li>`;
       }
-      if (origTblCount > 0 && (s.cleanedTblFloat || 0) === 0 && (s.cleanedTblLink || 0) === 0) {
-        reportHtml += `<li class="info">ℹ ${origTblCount}个表格 — 无需清理，已保持原生格式</li>`;
+      if ((s.origTblCount || 0) > 0 && (s.cleanedTblFloat || 0) === 0 && (s.cleanedTblLink || 0) === 0) {
+        reportHtml += `<li class="info">ℹ ${s.origTblCount}个表格 — 无需清理，已保持原生格式</li>`;
       }
     }
   }
@@ -1134,7 +1186,7 @@ function displayReport() {
     reportHtml += '<li class="warn">⚠ 文档包含OLE对象但无预览图。请在Word中打开原文档，确认公式/结构式正常显示</li>';
   }
 
-  reportHtml += `<li class="info">ℹ 原始检测: ${s.origAnchors}浮动 · ${s.origHlinks}图片链接 · ${s.origHyperlinks}文本链接 · ${s.origOles}OLE对象 · ${origTblCount}表格</li>`;
+  reportHtml += `<li class="info">ℹ 原始检测: ${s.origAnchors}浮动 · ${s.origHlinks}图片链接 · ${s.origHyperlinks}文本链接 · ${s.origOles}OLE对象 · ${s.origTblCount || 0}表格</li>`;
 
   reportList.innerHTML = reportHtml;
   reportArea.classList.add('show');
