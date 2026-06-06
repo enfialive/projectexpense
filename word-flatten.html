@@ -757,48 +757,96 @@ function findAndMarkTables(docXml, origXmlStr) {
   return { xml: modifiedXml, tableList };
 }
 
-// 异步处理所有表格占位符
+// ===== 表格分页常量 =====
+const ROWS_PER_PAGE = 35; // 每张纯图最多容纳的行数, 超过则自动拆分
+
+// 异步处理所有表格占位符 (超长表格自动拆分)
 async function convertTablesToImages(xmlStr, tableList, zip) {
   let modifiedXml = xmlStr;
   let tblCount = 0;
+  let totalImages = 0;
+  let totalRows = 0;
   const imagesAdded = [];
   const counter = Date.now();
 
   for (const tbl of tableList) {
     tblCount++;
-    const html = tableDataToHtml(tbl.data);
+    const rows = tbl.data.rows;
+    const totalTableRows = rows.length;
+    totalRows += totalTableRows;
 
-    // 渲染为图片
-    const renderResult = await renderTableToImage(html);
-    if (!renderResult) {
-      // 渲染失败: 保留占位符位置但写入原始HTML (回退)
-      const fallbackText = '<w:r><w:t xml:space="preserve">[表格' + tblCount + ': ' + escapeHtml(tbl.data.caption || '') + ']</w:t></w:r>';
-      modifiedXml = modifiedXml.replace(tbl.placeholder, fallbackText);
-      continue;
+    // 判断是否需要拆分
+    const needsSplit = totalTableRows > ROWS_PER_PAGE;
+    const chunks = [];
+
+    if (needsSplit) {
+      // 按ROWS_PER_PAGE拆分
+      for (let i = 0; i < totalTableRows; i += ROWS_PER_PAGE) {
+        const chunkRows = rows.slice(i, Math.min(i + ROWS_PER_PAGE, totalTableRows));
+        const chunkData = Object.assign({}, tbl.data, { rows: chunkRows });
+        // 只有第一个块保留原标题, 后续加"(续)"
+        if (i > 0) {
+          chunkData.caption = (tbl.data.caption ? tbl.data.caption + ' (续' + (Math.floor(i / ROWS_PER_PAGE) + 1) + ')' : '');
+          chunkData.headerRow = false; // 续页不显示表头
+        }
+        chunks.push(chunkData);
+      }
+    } else {
+      chunks.push(tbl.data);
     }
 
-    const { base64, emuW, emuH } = renderResult;
-    const relId = 'rId_tbl_' + tblCount + '_' + counter;
-    const imgId = 20000 + tblCount;
+    // 渲染每个分块
+    let replacementXml = '';
+    let chunkIdx = 0;
+    for (const chunkData of chunks) {
+      chunkIdx++;
+      const html = tableDataToHtml(chunkData);
 
-    // 构造内联图片XML
-    const newImageXml = '<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0">' +
-      '<wp:extent cx="' + emuW + '" cy="' + emuH + '"/>' +
-      '<wp:docPr id="' + imgId + '" name="Table_' + tblCount + '" descr="' + escapeHtml(tbl.data.caption || '') + '"/>' +
-      '<wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"/></wp:cNvGraphicFramePr>' +
-      '<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">' +
-      '<a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">' +
-      '<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">' +
-      '<pic:nvPicPr><pic:cNvPr id="' + imgId + '" name="Table_' + tblCount + '"/><pic:cNvPicPr/></pic:nvPicPr>' +
-      '<pic:blipFill><a:blip r:embed="' + relId + '"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>' +
-      '<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="' + emuW + '" cy="' + emuH + '"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>' +
-      '</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>';
+      // 超长表格显示进度
+      if (chunks.length > 1) {
+        showSpinner('Pass 4/4: 表格' + tblCount + ' → 纯图 (' + chunkIdx + '/' + chunks.length + ' 页, 每页≤' + ROWS_PER_PAGE + '行)…');
+      }
 
-    modifiedXml = modifiedXml.replace(tbl.placeholder, newImageXml);
-    imagesAdded.push({ base64, relId, ext: 'png' });
+      const renderResult = await renderTableToImage(html);
+
+      if (!renderResult) {
+        const fallbackText = '<w:r><w:t xml:space="preserve">[表格' + tblCount +
+          (chunks.length > 1 ? '-' + chunkIdx : '') + ': ' +
+          escapeHtml(chunkData.caption || '') + ']</w:t></w:r>';
+        replacementXml += fallbackText;
+        continue;
+      }
+
+      const { base64, emuW, emuH } = renderResult;
+      const relId = 'rId_tbl_' + tblCount + '_' + chunkIdx + '_' + counter;
+      const imgId = 20000 + tblCount * 100 + chunkIdx;
+      totalImages++;
+
+      // 构造内联图片XML
+      replacementXml += '<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0">' +
+        '<wp:extent cx="' + emuW + '" cy="' + emuH + '"/>' +
+        '<wp:docPr id="' + imgId + '" name="Table_' + tblCount + '_' + chunkIdx + '" descr="' + escapeHtml(chunkData.caption || '') + '"/>' +
+        '<wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"/></wp:cNvGraphicFramePr>' +
+        '<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">' +
+        '<a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">' +
+        '<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">' +
+        '<pic:nvPicPr><pic:cNvPr id="' + imgId + '" name="Table_' + tblCount + '_' + chunkIdx + '"/><pic:cNvPicPr/></pic:nvPicPr>' +
+        '<pic:blipFill><a:blip r:embed="' + relId + '"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>' +
+        '<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="' + emuW + '" cy="' + emuH + '"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>' +
+        '</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>';
+
+      imagesAdded.push({ base64, relId, ext: 'png' });
+
+      // 分块之间添加换行
+      if (chunkIdx < chunks.length) {
+        replacementXml += '<w:r><w:br/></w:r>';
+      }
+    }
+
+    modifiedXml = modifiedXml.replace(tbl.placeholder, replacementXml);
   }
 
-  return { xml: modifiedXml, tblCount, imagesAdded };
+  return { xml: modifiedXml, tblCount, totalImages, imagesAdded };
 }
 
 // ==================== 主转换流程 ====================
@@ -839,7 +887,7 @@ async function runConversion() {
     conversionStats = {
       origAnchors, origHlinks, origHyperlinks, origOles, origTblFloat: origTbls,
       convertedAnchors: 0, removedHlinks: 0, removedHyperlinks: 0,
-      convertedOles: 0, cleanedTblFloat: 0, convertedTables: 0,
+      convertedOles: 0, convertedTables: 0, totalTableCount: 0,
       extraImagesAdded: 0
     };
     const origTblCount = origTbls;
@@ -891,7 +939,8 @@ async function runConversion() {
       showSpinner('Pass 4/4: 表格 → 纯图 (SVG渲染)…');
       const pass4 = await convertTablesToImages(workingXml, tableResult.tableList, fileZip);
       workingXml = pass4.xml;
-      conversionStats.convertedTables = pass4.tblCount;
+      conversionStats.convertedTables = pass4.totalImages; // 图片总数(含拆分)
+      conversionStats.totalTableCount = pass4.tblCount;     // 原始表格数
       tableImages = pass4.imagesAdded;
 
       if (tableImages.length > 0) {
@@ -998,7 +1047,10 @@ function displayReport() {
     }
 
     if (s.convertedTables > 0) {
-      reportHtml += `<li>✅ 已将 <strong>${s.convertedTables}</strong> 个表格渲染为纯图PNG（SVG渲染 → Canvas → 内联图片）</li>`;
+      const splitNote = (s.totalTableCount && s.convertedTables > s.totalTableCount)
+        ? ` <span class="tag tag-info">${s.totalTableCount}个表格拆分为${s.convertedTables}张图片 (每页≤${ROWS_PER_PAGE}行)</span>`
+        : '';
+      reportHtml += `<li>✅ 已将 <strong>${s.convertedTables}</strong> 张表格纯图嵌入文档${splitNote}</li>`;
     }
   }
 
