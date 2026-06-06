@@ -686,6 +686,7 @@ function renderTableDataToCanvas(tblData) {
     if (!rows[ri].cells || !Array.isArray(rows[ri].cells) || rows[ri].cells.length === 0) return null;
   }
 
+  const SCALE = 2; // 2x 高清渲染
   const FONT_SIZE = 11;
   const FONT = FONT_SIZE + 'px SimSun, "Microsoft YaHei", "PingFang SC", sans-serif';
   const PAD_X = 8;
@@ -693,7 +694,8 @@ function renderTableDataToCanvas(tblData) {
   const LINE_H = FONT_SIZE + 6;
   const BORDER_W = 1;
   const MIN_COL_W = 42;
-  const MAX_TOTAL_W = 1100; // 最大画布宽度
+  const DXA_TO_PX = 0.75; // 1 dxa (twip) ≈ 0.75px at 96dpi
+  const MAX_DISPLAY_W = 1100;
 
   // 测量上下文
   const mCanvas = document.createElement('canvas');
@@ -703,41 +705,68 @@ function renderTableDataToCanvas(tblData) {
 
   function stripTags(s) { return (s || '').replace(/<br>/gi, '\n').replace(/<[^>]+>/g, ''); }
 
-  // 收集所有单元格的纯文本和格式
-  const cellInfo = []; // [{row, colIdx, lines, maxW, isHeader, bgColor, gridSpan}]
+  // 列总数
   const colCount = Math.max(...rows.map(r => r.cells.reduce((s, c) => s + (c.gridSpan || 1), 0)), 1);
-  let maxRows = rows.length;
-  if (tblData.headerRow && maxRows > 0) maxRows++;
 
+  // ===== 列宽: 优先使用 Word 原始 w:tblGrid 列宽 =====
+  let colPx;
+  const origCols = tblData.colWidths;
+  if (origCols && origCols.length >= colCount) {
+    // 使用原始 dxa → px (保持原表格长宽比)
+    colPx = origCols.slice(0, colCount).map(dxa => Math.round(dxa * DXA_TO_PX));
+    // 确保最小宽度
+    colPx = colPx.map(w => Math.max(w, MIN_COL_W));
+  } else if (origCols && origCols.length > 0) {
+    // colWidths 数量不匹配, 扩展/截断
+    colPx = [];
+    for (let i = 0; i < colCount; i++) {
+      colPx.push(Math.max(Math.round((origCols[i] || origCols[origCols.length - 1]) * DXA_TO_PX), MIN_COL_W));
+    }
+  } else {
+    // 回退: 基于文本内容计算
+    const cellInfo = [];
+    rows.forEach((row, ri) => {
+      let ci = 0;
+      row.cells.forEach(cell => {
+        const text = cell.text || '';
+        const lines = text.split('<br>');
+        let maxW = 0;
+        lines.forEach(l => { const c = stripTags(l); const w = mCtx.measureText(c).width; maxW = Math.max(maxW, w); });
+        cellInfo.push({ ri, ci, maxW, gridSpan: cell.gridSpan || 1 });
+        ci += cell.gridSpan || 1;
+      });
+    });
+    colPx = new Array(colCount).fill(MIN_COL_W);
+    cellInfo.forEach(inf => {
+      const perCol = Math.ceil((inf.maxW + PAD_X * 2) / inf.gridSpan);
+      for (let i = 0; i < inf.gridSpan && inf.ci + i < colCount; i++) {
+        colPx[inf.ci + i] = Math.max(colPx[inf.ci + i], perCol);
+      }
+    });
+  }
+
+  // 缩放超宽表格
+  const totalW = colPx.reduce((s, w) => s + w, 0) + BORDER_W * (colCount + 1);
+  const fitScale = totalW > MAX_DISPLAY_W ? MAX_DISPLAY_W / totalW : 1;
+  const displayColW = colPx.map(w => Math.round(w * fitScale));
+  const displayW = displayColW.reduce((s, w) => s + w, 0) + BORDER_W * (colCount + 1);
+
+  // ===== 收集单元格信息(用于行高和绘制) =====
+  const cellInfo = [];
   rows.forEach((row, ri) => {
     let ci = 0;
     const isHdr = tblData.headerRow && ri === 0;
     row.cells.forEach(cell => {
       const text = cell.text || '';
       const lines = text.split('<br>');
-      // 测量每行宽度
-      let maxW = 0;
-      const cleanLines = lines.map(l => { const c = stripTags(l); mCtx.font = (isHdr ? boldFont : FONT); const w = mCtx.measureText(c).width; maxW = Math.max(maxW, w); return c; });
-      cellInfo.push({ ri, ci, lines: cleanLines, maxW, isHeader: isHdr, bgColor: cell.bgColor, gridSpan: cell.gridSpan || 1, vAlign: cell.vAlign });
+      const cleanLines = lines.map(l => stripTags(l));
+      cellInfo.push({ ri, ci, lines: cleanLines, isHeader: isHdr, bgColor: cell.bgColor,
+        gridSpan: cell.gridSpan || 1, vAlign: cell.vAlign });
       ci += cell.gridSpan || 1;
     });
   });
 
-  // 计算列宽
-  const colWidths = new Array(colCount).fill(MIN_COL_W);
-  cellInfo.forEach(inf => {
-    const perCol = Math.ceil((inf.maxW + PAD_X * 2) / inf.gridSpan);
-    for (let i = 0; i < inf.gridSpan && inf.ci + i < colCount; i++) {
-      colWidths[inf.ci + i] = Math.max(colWidths[inf.ci + i], perCol);
-    }
-  });
-
-  const totalW = colWidths.reduce((s, w) => s + w, 0) + BORDER_W * (colCount + 1);
-  const scale = totalW > MAX_TOTAL_W ? MAX_TOTAL_W / totalW : 1;
-  const scaledColW = colWidths.map(w => Math.round(w * scale));
-  const canvasW = scaledColW.reduce((s, w) => s + w, 0) + BORDER_W * (colCount + 1);
-
-  // 计算行高
+  // ===== 行高 =====
   const rowHeights = [];
   let yAcc = BORDER_W;
   for (let ri = 0; ri < rows.length; ri++) {
@@ -747,24 +776,29 @@ function renderTableDataToCanvas(tblData) {
     rowHeights.push({ y: yAcc, h: h, cells: cellsThisRow });
     yAcc += h + BORDER_W;
   }
-  const canvasH = yAcc;
+  const displayH = yAcc;
 
-  // 绘制
+  // ===== 2x 高清绘制 =====
   const canvas = document.createElement('canvas');
-  canvas.width = canvasW;
-  canvas.height = canvasH;
+  canvas.width = displayW * SCALE;
+  canvas.height = displayH * SCALE;
   const ctx = canvas.getContext('2d');
+  ctx.scale(SCALE, SCALE);
+
+  // 白色背景
   ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, canvasW, canvasH);
+  ctx.fillRect(0, 0, displayW, displayH);
 
   // 绘制网格和内容
   rowHeights.forEach(rh => {
     rh.cells.forEach(inf => {
       // 单元格位置
       let x0 = BORDER_W;
-      for (let i = 0; i < inf.ci; i++) x0 += scaledColW[i] + BORDER_W;
+      for (let i = 0; i < inf.ci; i++) x0 += displayColW[i] + BORDER_W;
       let cellW = 0;
-      for (let i = 0; i < inf.gridSpan && inf.ci + i < colCount; i++) cellW += scaledColW[inf.ci + i] + (i > 0 ? BORDER_W : 0);
+      for (let i = 0; i < inf.gridSpan && inf.ci + i < colCount; i++) {
+        cellW += displayColW[inf.ci + i] + (i > 0 ? BORDER_W : 0);
+      }
 
       // 背景色
       if (inf.bgColor) {
@@ -772,38 +806,38 @@ function renderTableDataToCanvas(tblData) {
         ctx.fillRect(x0, rh.y, cellW, rh.h);
       }
 
-      // 绘制文字
+      // 文字
       ctx.fillStyle = '#000000';
       ctx.font = inf.isHeader ? boldFont : FONT;
       ctx.textBaseline = 'top';
       const textX = x0 + PAD_X;
       inf.lines.forEach((line, li) => {
-        if (li * LINE_H + PAD_Y + LINE_H > rh.h) return; // 超出单元格
+        if (li * LINE_H + PAD_Y + LINE_H > rh.h) return;
         ctx.fillText(line, textX, rh.y + PAD_Y + li * LINE_H);
       });
 
-      // 绘制单元格边框
-      ctx.strokeStyle = '#555555';
+      // 边框
+      ctx.strokeStyle = '#999999';
       ctx.lineWidth = BORDER_W;
       ctx.strokeRect(x0, rh.y, cellW, rh.h);
     });
   });
 
-  // 表头底部加粗线
+  // 表头加粗底线
   if (tblData.headerRow && rowHeights.length > 1) {
     const hdrBottom = rowHeights[0].y + rowHeights[0].h;
-    ctx.strokeStyle = '#333333';
+    ctx.strokeStyle = '#555555';
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(0, hdrBottom);
-    ctx.lineTo(canvasW, hdrBottom);
+    ctx.lineTo(displayW, hdrBottom);
     ctx.stroke();
   }
 
-  // → base64 PNG
+  // → base64 PNG (EMU基于显示大小, 图片实际为2x高清)
   const dataUrl = canvas.toDataURL('image/png');
   const base64 = dataUrl.replace(/^data:image\/png;base64,/, '');
-  return { base64, width: canvasW, height: canvasH, emuW: Math.round(canvasW * 9525), emuH: Math.round(canvasH * 9525) };
+  return { base64, width: canvas.width, height: canvas.height, emuW: Math.round(displayW * 9525), emuH: Math.round(displayH * 9525) };
 }
 
 // 在 DOM 中查找并标记表格 (用占位符替换)
