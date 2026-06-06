@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Word悬浮元素扁平化 — 纯图转换工具</title>
+<style>
+:root{--primary:#104c82;--primary-light:#1a6db5;--warning:#ffc107;--danger:#dc3545;--success:#28a745;--bg:#f7fafc;--card-bg:#fff;--text:#314659;--text-light:#636E72;--border:#e5e7eb;--shadow:0 0 .275rem rgba(49,146,216,0.12);--shadow-lg:0 4px 24px rgba(0,0,0,0.08);--radius:8px;--max-width:960px}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",Arial,sans-serif;font-size:14px;color:var(--text);background:var(--bg);line-height:1.6;min-height:100vh}
+a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}
+.container{max-width:var(--max-width);margin:0 auto;padding:20px 16px}
+.app-header{background:white;border-bottom:3px solid var(--primary);box-shadow:0 2px 8px rgba(0,21,41,0.06);padding:16px 0;margin-bottom:24px}
+.app-header .container{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+.app-header h1{font-size:1.45rem;color:var(--primary);font-weight:700;display:flex;align-items:center;gap:10px}
+.app-header h1::before{content:"";display:inline-block;width:6px;height:28px;background:var(--primary);border-radius:3px}
+.app-header .subtitle{font-size:.85rem;color:var(--text-light)}
+.card{background:var(--card-bg);border-radius:var(--radius);box-shadow:var(--shadow);border:1px solid var(--border);margin-bottom:24px;overflow:hidden}
+.card-header{padding:14px 24px;border-bottom:1px solid var(--border);background:#fafbfc}
+.card-header h2{font-size:1.1rem;color:#333;font-weight:600}
+.card-body{padding:20px 24px}
+.btn-row{display:flex;gap:12px;margin-top:20px;flex-wrap:wrap}
+.btn{display:inline-block;padding:10px 28px;border:none;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;transition:all .2s;font-family:inherit}
+.btn-primary{background:var(--primary);color:white}
+.btn-primary:hover{background:var(--primary-light);transform:translateY(-1px);box-shadow:0 2px 8px rgba(16,76,130,0.25)}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.btn-secondary{background:#f0f2f5;color:#555;border:1px solid #d0d5dd}
+.btn-secondary:hover{background:#e4e7eb}
+.btn-success{background:var(--success);color:white}
+.btn-success:hover{background:#218838;transform:translateY(-1px)}
+.upload-zone{border:2px dashed #b0bec5;border-radius:var(--radius);padding:48px 24px;text-align:center;cursor:pointer;transition:all .3s;background:#fafcfd;position:relative}
+.upload-zone:hover,.upload-zone.drag-over{border-color:var(--primary);background:#e8f0fe}
+.upload-zone .upload-icon{font-size:3rem;margin-bottom:12px;display:block}
+.upload-zone .upload-text{font-size:1.05rem;color:#555;font-weight:500;margin-bottom:6px}
+.upload-zone .upload-hint{font-size:.8rem;color:var(--text-light)}
+.upload-zone input[type="file"]{position:absolute;inset:0;opacity:0;cursor:pointer}
+.file-info{display:none;align-items:center;gap:10px;margin-top:16px;padding:12px 16px;background:#f0f7ff;border:1px solid #b3d8ff;border-radius:6px;font-size:.9rem}
+.file-info.show{display:flex}
+.file-info .file-name{font-weight:600;color:var(--primary);flex:1}
+.file-info .file-size{color:var(--text-light);font-size:.8rem}
+.warning-box{background:#fff8e1;border:1px solid #ffc107;border-left:4px solid #ff9800;color:#7b5e00;padding:12px 16px;border-radius:6px;font-weight:500;margin-top:12px;font-size:.85rem}
+.info-box{background:#e8f0fe;border:1px solid #b3d8ff;border-left:4px solid var(--primary);color:var(--primary);padding:12px 16px;border-radius:6px;font-weight:500;margin-top:12px;font-size:.85rem}
+.success-box{background:#e8f5e9;border:1px solid #a5d6a7;border-left:4px solid var(--success);color:#1b5e20;padding:12px 16px;border-radius:6px;font-weight:500;margin-top:12px;font-size:.85rem}
+.error-box{background:#ffeaea;border:1px solid #ffcdd2;border-left:4px solid #e53935;color:#7b1f1f;padding:12px 16px;border-radius:6px;font-weight:500;margin-top:12px;font-size:.85rem}
+.summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:12px}
+.summary-item{text-align:center;padding:16px 12px;background:#f5f9ff;border:1px solid #d0e2f5;border-radius:6px}
+.summary-item .count{font-size:2rem;font-weight:700;color:var(--primary);line-height:1.2}
+.summary-item .label{font-size:.75rem;color:var(--text-light);margin-top:4px}
+.summary-item.modified .count{color:#e65100}
+.summary-item.warning .count{color:var(--danger)}
+.report-list{margin-top:12px;list-style:none}
+.report-list li{padding:8px 12px;border-left:3px solid var(--success);background:#f9fafb;margin-bottom:6px;border-radius:0 4px 4px 0;font-size:.85rem}
+.report-list li.warn{border-left-color:var(--warning);background:#fffef5}
+.report-list li.info{border-left-color:var(--primary);background:#f5f9ff}
+.tag{display:inline-block;padding:2px 8px;border-radius:3px;font-size:.7rem;font-weight:600;margin-left:6px}
+.tag-ok{background:#e8f5e9;color:#2e7d32}
+.tag-warn{background:#fff8e1;color:#e65100}
+.tag-info{background:#e8f0fe;color:#1565c0}
+.tag-count{background:var(--primary);color:white;padding:1px 6px;border-radius:10px;font-size:.7rem}
+.spinner-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,0.7);z-index:999;justify-content:center;align-items:center}
+.spinner-overlay.show{display:flex}
+.spinner{background:white;padding:30px 40px;border-radius:var(--radius);box-shadow:var(--shadow-lg);text-align:center}
+.spinner .loader{width:40px;height:40px;border:3px solid #e0e0e0;border-top-color:var(--primary);border-radius:50%;animation:spin .7s linear infinite;margin:0 auto 12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+#output-area{display:none}#output-area.show{display:block}
+#report-area{display:none}#report-area.show{display:block}
+.app-footer{text-align:center;padding:24px 0;color:var(--text-light);font-size:.8rem;border-top:1px solid #eee;margin-top:40px}
+.pipeline-steps{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.pipeline-step{flex:1;min-width:120px;text-align:center;padding:10px 8px;background:#f5f7fa;border-radius:6px;border:1px solid #e0e0e0;font-size:.8rem}
+.pipeline-step .step-num{font-size:1.2rem;font-weight:700;color:var(--primary)}
+.pipeline-step.done{background:#e8f5e9;border-color:#a5d6a7}
+.pipeline-step.done .step-num{color:var(--success)}
+@media(max-width:768px){.container{padding:12px}.btn-row{flex-direction:column}.btn{width:100%;text-align:center}.summary-grid{grid-template-columns:repeat(2,1fr)}.pipeline-steps{flex-direction:column}}
+</style>
+</head>
+<body>
+
+<div class="app-header"><div class="container">
+<div><h1>Word悬浮元素扁平化</h1><div class="subtitle">将Word中的浮动图片、公式、OLE对象等转为纯内联图片，移除超链接 — 输出.docx</div></div>
+</div></div>
+
+<div class="container">
+
+<!-- 上传区 -->
+<div class="card" id="upload-card">
+<div class="card-header"><h2>📄 上传 Word 文档</h2></div>
+<div class="card-body">
+<label class="upload-zone" id="upload-zone">
+  <span class="upload-icon">📤</span>
+  <div class="upload-text">拖拽 .docx 文件到此处，或点击选择文件</div>
+  <div class="upload-hint">支持 .docx 格式（Word 2007及以上）· 无文件大小限制 · 输出为扁平化的 .docx</div>
+  <input type="file" id="file-input" accept=".docx" />
+</label>
+<div class="file-info" id="file-info">
+  <span>📎</span>
+  <span class="file-name" id="file-name"></span>
+  <span class="file-size" id="file-size"></span>
+  <button class="btn btn-secondary" id="btn-clear" style="padding:4px 12px;font-size:.8rem;">✕ 移除</button>
+</div>
+
+<!-- 处理步骤 -->
+<div id="pipeline-area" style="display:none;margin-top:20px">
+  <div style="font-weight:600;margin-bottom:8px;color:#333;">🔄 转换管线</div>
+  <div class="pipeline-steps" id="pipeline-steps">
+    <div class="pipeline-step" id="step-1"><div class="step-num">1</div>浮动→内联</div>
+    <div class="pipeline-step" id="step-2"><div class="step-num">2</div>移除超链接</div>
+    <div class="pipeline-step" id="step-3"><div class="step-num">3</div>OLE→图片</div>
+    <div class="pipeline-step" id="step-4"><div class="step-num">4</div>表格清理</div>
+    <div class="pipeline-step" id="step-5"><div class="step-num">5</div>打包下载</div>
+  </div>
+</div>
+
+<div class="btn-row" id="btn-row-convert" style="display:none">
+  <button class="btn btn-primary" id="btn-convert">🔄 开始转换</button>
+</div>
+</div>
+</div>
+
+<!-- 转换统计 -->
+<div class="card" id="report-area">
+<div class="card-header"><h2>📊 转换报告</h2></div>
+<div class="card-body">
+<div class="summary-grid" id="summary-grid"></div>
+<ul class="report-list" id="report-list"></ul>
+<div class="btn-row">
+  <button class="btn btn-success" id="btn-download" style="display:none">⬇ 下载扁平化后的 .docx</button>
+</div>
+</div>
+</div>
+
+<!-- 输出信息 -->
+<div class="card" id="output-area">
+<div class="card-header"><h2>📝 处理详情</h2></div>
+<div class="card-body">
+<div id="output-detail" style="font-family:Consolas,Monaco,Courier New,monospace;font-size:12px;background:#f5f7fa;border:1px solid #e0e0e0;border-radius:6px;padding:16px;max-height:300px;overflow:auto;white-space:pre-wrap;line-height:1.5"></div>
+</div>
+</div>
+
+</div>
+
+<div class="spinner-overlay" id="spinner"><div class="spinner"><div class="loader"></div><div id="spinner-text">正在处理中，请稍候…</div></div></div>
+
+<div class="app-footer"><p>Word悬浮元素扁平化工具 — 浮动图片→内联 · 超链接清除 · OLE对象→纯图 · 表格清理 · 输出标准.docx</p></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+(function(){
+'use strict';
+
+// ==================== DOM元素 ====================
+const uploadZone = document.getElementById('upload-zone');
+const fileInput = document.getElementById('file-input');
+const fileInfo = document.getElementById('file-info');
+const fileName = document.getElementById('file-name');
+const fileSize = document.getElementById('file-size');
+const btnClear = document.getElementById('btn-clear');
+const pipelineArea = document.getElementById('pipeline-area');
+const btnRowConvert = document.getElementById('btn-row-convert');
+const btnConvert = document.getElementById('btn-convert');
+const btnDownload = document.getElementById('btn-download');
+const reportArea = document.getElementById('report-area');
+const outputArea = document.getElementById('output-area');
+const summaryGrid = document.getElementById('summary-grid');
+const reportList = document.getElementById('report-list');
+const outputDetail = document.getElementById('output-detail');
+const spinner = document.getElementById('spinner');
+const spinnerText = document.getElementById('spinner-text');
+
+// 命名空间常量
+const NS = {
+  W: 'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
+  R: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships',
+  WP: 'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing',
+  A: 'http://schemas.openxmlformats.org/drawingml/2006/main',
+  R2: 'http://schemas.openxmlformats.org/package/2006/relationships',
+  V: 'urn:schemas-microsoft-com:vml',
+  O: 'urn:schemas-microsoft-com:office:office',
+  MC: 'http://schemas.openxmlformats.org/markup-compatibility/2006',
+  M: 'http://schemas.openxmlformats.org/officeDocument/2006/math',
+};
+
+let currentFile = null;
+let fileZip = null;
+let conversionStats = null;
+let outputBlob = null;
+
+// ==================== 工具函数 ====================
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1048576).toFixed(1) + ' MB';
+}
+
+function showSpinner(msg) {
+  spinnerText.textContent = msg || '正在处理中，请稍候…';
+  spinner.classList.add('show');
+}
+
+function hideSpinner() {
+  spinner.classList.remove('show');
+}
+
+// TreeWalker命名空间无关元素查找
+function findAllByLocalName(root, localName) {
+  const results = [];
+  const startNode = (root.nodeType === 9) ? root.documentElement : root;
+  if (!startNode) return results;
+  const walker = startNode.ownerDocument.createTreeWalker(
+    startNode, NodeFilter.SHOW_ELEMENT,
+    { acceptNode: function(node) { return (node.localName === localName) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP; } }
+  );
+  while (walker.nextNode()) results.push(walker.currentNode);
+  return results;
+}
+
+// 命名空间属性读取
+function getAttr(el, prefix, localName, nsUri) {
+  const val1 = el.getAttribute(prefix + ':' + localName);
+  if (val1) return val1;
+  if (nsUri) { const val2 = el.getAttributeNS(nsUri, localName); if (val2) return val2; }
+  return null;
+}
+
+// 在指定元素下查找第一个匹配localName的子元素
+function qs(parent, tagName) {
+  if (!parent) return null;
+  try {
+    const found = parent.getElementsByTagNameNS('*', tagName);
+    if (found && found.length > 0) return found[0];
+  } catch(e) {}
+  const all = parent.querySelectorAll('*');
+  for (const e of all) { if (e.localName === tagName) return e; }
+  return null;
+}
+
+function qsa(parent, tagName) {
+  if (!parent) return [];
+  try {
+    const found = parent.getElementsByTagNameNS('*', tagName);
+    if (found && found.length > 0) return Array.from(found);
+  } catch(e) {}
+  const results = [];
+  const all = parent ? parent.querySelectorAll('*') : [];
+  for (const e of all) { if (e.localName === tagName) results.push(e); }
+  return results;
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ==================== 文件处理 ====================
+function handleFile(file) {
+  if (!file.name.toLowerCase().endsWith('.docx')) {
+    alert('请选择 .docx 格式的文件');
+    return;
+  }
+  currentFile = file;
+  fileName.textContent = file.name;
+  fileSize.textContent = formatSize(file.size);
+  fileInfo.classList.add('show');
+  pipelineArea.style.display = 'block';
+  btnRowConvert.style.display = 'flex';
+  resetOutput();
+}
+
+function resetOutput() {
+  conversionStats = null;
+  outputBlob = null;
+  reportArea.classList.remove('show');
+  outputArea.classList.remove('show');
+  btnDownload.style.display = 'none';
+  summaryGrid.innerHTML = '';
+  reportList.innerHTML = '';
+  outputDetail.textContent = '';
+  // 重置管线步骤
+  for (let i = 1; i <= 5; i++) {
+    const step = document.getElementById('step-' + i);
+    if (step) step.classList.remove('done');
+  }
+}
+
+fileInput.addEventListener('change', e => {
+  if (e.target.files.length > 0) handleFile(e.target.files[0]);
+});
+
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+uploadZone.addEventListener('dragleave', e => { e.preventDefault(); uploadZone.classList.remove('drag-over'); });
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadZone.classList.remove('drag-over');
+  if (e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
+});
+
+btnClear.addEventListener('click', () => {
+  currentFile = null;
+  fileZip = null;
+  fileInput.value = '';
+  fileInfo.classList.remove('show');
+  pipelineArea.style.display = 'none';
+  btnRowConvert.style.display = 'none';
+  resetOutput();
+});
+
+// ==================== 关系解析 ====================
+function parseRelationships(relsXml) {
+  const map = {};
+  if (!relsXml) return map;
+  const rels = findAllByLocalName(relsXml, 'Relationship');
+  rels.forEach(r => {
+    const id = r.getAttribute('Id');
+    const target = r.getAttribute('Target');
+    const type = r.getAttribute('Type');
+    if (id && target) map[id] = { target: target, type: type || '' };
+  });
+  return map;
+}
+
+// ==================== Pass 1: 浮动→内联 ====================
+function convertFloatingToInline(xmlStr) {
+  let modified = xmlStr;
+  let anchorCount = 0;
+
+  // 处理自闭合 anchor: <wp:anchor ... /> → 转为带空内容的 inline
+  const selfCloseRe = /<wp:anchor\b([^>]*?)\/>/g;
+  modified = modified.replace(selfCloseRe, (match, attrs) => {
+    anchorCount++;
+    attrs = stripFloatAttrs(attrs);
+    return '<wp:inline ' + attrs + '></wp:inline>';
+  });
+
+  // 处理成对 anchor: <wp:anchor ...> ... </wp:anchor>
+  // 使用贪婪匹配内部内容 (支持嵌套的 a:graphic 等)
+  const pairRe = /<wp:anchor\b([^>]*)>([\s\S]*?)<\/wp:anchor>/g;
+  modified = modified.replace(pairRe, (match, attrs, inner) => {
+    anchorCount++;
+    attrs = stripFloatAttrs(attrs);
+
+    // 删除浮动定位子元素 (自闭合和成对两种形式)
+    const floatEls = ['simplePos','positionH','positionV','wrapSquare','wrapTight','wrapThrough','wrapTopAndBottom','wrapNone'];
+    floatEls.forEach(el => {
+      const selfCloseRe2 = new RegExp('<wp:' + el + '\\b[^>]*?/>', 'g');
+      const pairRe2 = new RegExp('<wp:' + el + '\\b[\\s\\S]*?</wp:' + el + '>', 'g');
+      inner = inner.replace(selfCloseRe2, '').replace(pairRe2, '');
+    });
+
+    return '<wp:inline ' + attrs + '>' + inner + '</wp:inline>';
+  });
+
+  return { xml: modified, count: anchorCount };
+}
+
+function stripFloatAttrs(attrs) {
+  return attrs
+    .replace(/\s*distT\s*=\s*"[^"]*"/g, '')
+    .replace(/\s*distB\s*=\s*"[^"]*"/g, '')
+    .replace(/\s*distL\s*=\s*"[^"]*"/g, '')
+    .replace(/\s*distR\s*=\s*"[^"]*"/g, '')
+    .replace(/\s*simplePos\s*=\s*"[^"]*"/g, '')
+    .replace(/\s*relativeHeight\s*=\s*"[^"]*"/g, '')
+    .replace(/\s*behindDoc\s*=\s*"[^"]*"/g, '')
+    .replace(/\s*locked\s*=\s*"[^"]*"/g, '')
+    .replace(/\s*layoutInCell\s*=\s*"[^"]*"/g, '')
+    .replace(/\s*allowOverlap\s*=\s*"[^"]*"/g, '')
+    .replace(/\s*distT\s*=\s*'[^']*'/g, '')
+    .replace(/\s*distB\s*=\s*'[^']*'/g, '')
+    .replace(/\s*distL\s*=\s*'[^']*'/g, '')
+    .replace(/\s*distR\s*=\s*'[^']*'/g, '')
+    .replace(/\s*simplePos\s*=\s*'[^']*'/g, '')
+    .replace(/\s*relativeHeight\s*=\s*'[^']*'/g, '')
+    .replace(/\s*behindDoc\s*=\s*'[^']*'/g, '')
+    .replace(/\s*locked\s*=\s*'[^']*'/g, '')
+    .replace(/\s*layoutInCell\s*=\s*'[^']*'/g, '')
+    .replace(/\s*allowOverlap\s*=\s*'[^']*'/g, '')
+    .replace(/\s*wp:anchor\s*/g, '')
+    .trim();
+}
+
+// ==================== Pass 2: 移除超链接 ====================
+function removeHyperlinks(xmlStr, relsXmlStr) {
+  let modifiedXml = xmlStr;
+  let modifiedRels = relsXmlStr;
+  let hlinkCount = 0;
+  let hyperlinkCount = 0;
+  let removedRelIds = new Set();
+
+  // 2a: 删除 DrawingML 超链接 <a:hlinkClick .../>
+  const hlinkRe = /<a:hlinkClick\b[^>]*\/>/g;
+  // 同时收集被删除超链接引用的 r:id
+  const hlinkWithIdRe = /<a:hlinkClick\b[^>]*r:id\s*=\s*"([^"]*)"[^>]*\/>/g;
+  let m;
+  while ((m = hlinkWithIdRe.exec(xmlStr)) !== null) {
+    removedRelIds.add(m[1]);
+    hlinkCount++;
+  }
+  modifiedXml = modifiedXml.replace(hlinkRe, '');
+
+  // 2b: 处理 <w:hyperlink> — 保留内部内容，移除超链接包裹
+  // <w:hyperlink r:id="..."> ... </w:hyperlink> → 保留内部内容
+  const hlStartRe = /<w:hyperlink\b[^>]*>/g;
+  while ((m = hlStartRe.exec(modifiedXml)) !== null) {
+    const ridMatch = m[0].match(/r:id\s*=\s*"([^"]*)"/);
+    if (ridMatch) removedRelIds.add(ridMatch[1]);
+    hyperlinkCount++;
+  }
+  modifiedXml = modifiedXml.replace(/<w:hyperlink\b[^>]*>/g, '');
+  modifiedXml = modifiedXml.replace(/<\/w:hyperlink>/g, '');
+
+  // 2c: 清理关系文件中的超链接关系
+  if (removedRelIds.size > 0 && modifiedRels) {
+    removedRelIds.forEach(rid => {
+      const relRe = new RegExp('<Relationship\\b[^>]*Id\\s*=\\s*"' + rid.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '"[^>]*\\/>', 'g');
+      modifiedRels = modifiedRels.replace(relRe, '');
+    });
+  }
+
+  return { xml: modifiedXml, rels: modifiedRels, hlinkCount, hyperlinkCount };
+}
+
+// ==================== Pass 3: OLE对象→内联图片 ====================
+// 使用占位符替换策略, 避免 outerHTML 字符串匹配的序列化差异问题
+function findAndMarkOleObjects(docXml, relsXml, origXmlStr) {
+  const oleList = [];
+  const relMap = parseRelationships(relsXml);
+
+  const objects = findAllByLocalName(docXml.documentElement || docXml, 'object');
+  objects.forEach((obj, idx) => {
+    const oleObj = qs(obj, 'OLEObject');
+    if (!oleObj) return;
+
+    // 查找预览图: v:imagedata (在 v:shape 内)
+    const imagedatas = findAllByLocalName(obj, 'imagedata');
+    let previewRelId = null;
+    for (const imgData of imagedatas) {
+      const rid = getAttr(imgData, 'r', 'id', NS.R) || imgData.getAttribute('r:id');
+      if (rid && relMap[rid]) { previewRelId = rid; break; }
+    }
+
+    // 也检查 v:fill 中的图片引用
+    if (!previewRelId) {
+      const fills = findAllByLocalName(obj, 'fill');
+      for (const fill of fills) {
+        const rid = getAttr(fill, 'r', 'id', NS.R);
+        if (rid && relMap[rid]) { previewRelId = rid; break; }
+      }
+    }
+
+    const oleWidth = oleObj.getAttribute('w:dxaOrig') || obj.getAttribute('w:dxaOrig') || '';
+    const oleHeight = oleObj.getAttribute('w:dyaOrig') || obj.getAttribute('w:dyaOrig') || '';
+
+    if (previewRelId && relMap[previewRelId]) {
+      const placeholder = `__OLE_PLACEHOLDER_${idx}__`;
+      // 用文本节点替换 OLE 对象元素
+      const textNode = obj.ownerDocument.createTextNode(placeholder);
+      obj.parentNode.replaceChild(textNode, obj);
+
+      oleList.push({
+        placeholder: placeholder,
+        previewRelId: previewRelId,
+        previewPath: 'word/' + relMap[previewRelId].target,
+        previewExt: relMap[previewRelId].target.split('.').pop().toLowerCase(),
+        width: oleWidth,
+        height: oleHeight
+      });
+    }
+  });
+
+  // 序列化修改后的 XML
+  let modifiedXml = new XMLSerializer().serializeToString(docXml);
+  // 移除 XMLSerializer 可能添加的声明, 匹配原始格式
+  modifiedXml = modifiedXml.replace(/^<\?xml[^?]*\?>\s*/g, '');
+  const origDecl = origXmlStr.match(/^<\?xml[^?]*\?>/);
+  if (origDecl) modifiedXml = origDecl[0] + '\n' + modifiedXml;
+
+  return { xml: modifiedXml, oleList };
+}
+
+async function convertOleObjects(xmlStr, oleList, zip) {
+  let modifiedXml = xmlStr;
+  let oleCount = 0;
+  const oleToInline = [];
+  const uniqueIdCounter = Date.now();
+
+  for (const ole of oleList) {
+    oleCount++;
+    let base64Data = '';
+    const imgExt = ole.previewExt || 'wmf';
+    try {
+      const imgFile = zip.file(ole.previewPath);
+      if (imgFile) base64Data = await imgFile.async('base64');
+    } catch(e) {
+      console.warn('Failed to read OLE preview image:', ole.previewPath, e);
+    }
+    if (!base64Data) {
+      // 移除占位符 (无法转换)
+      modifiedXml = modifiedXml.replace(ole.placeholder, '');
+      continue;
+    }
+
+    // dxa (twips) → EMU: 1 twip = 635 EMU
+    const cx = ole.width ? parseInt(ole.width) * 635 : 3000000;
+    const cy = ole.height ? parseInt(ole.height) * 635 : 3000000;
+    const relId = 'rId_ole_' + oleCount + '_' + uniqueIdCounter;
+    const imgId = oleCount + 10000; // 避免与其他元素ID冲突
+
+    const newImageXml = `<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0">` +
+      `<wp:extent cx="${cx}" cy="${cy}"/>` +
+      `<wp:docPr id="${imgId}" name="OLE_Converted_${oleCount}"/>` +
+      `<wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"/></wp:cNvGraphicFramePr>` +
+      `<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">` +
+      `<a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">` +
+      `<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">` +
+      `<pic:nvPicPr><pic:cNvPr id="${imgId}" name="OLE_Converted_${oleCount}"/><pic:cNvPicPr/></pic:nvPicPr>` +
+      `<pic:blipFill><a:blip r:embed="${relId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>` +
+      `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>` +
+      `</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`;
+
+    modifiedXml = modifiedXml.replace(ole.placeholder, newImageXml);
+
+    oleToInline.push({ base64: base64Data, ext: imgExt, relId: relId });
+  }
+
+  return { xml: modifiedXml, oleCount, oleToInline };
+}
+
+// ==================== Pass 4: 表格清理 ====================
+function cleanTables(xmlStr) {
+  let modifiedXml = xmlStr;
+  let tblFloatCount = 0;
+  let tblHyperlinkCount = 0;
+
+  // 4a: 删除表格浮动定位 <w:tblpPr .../>
+  const tblpPrRe = /<w:tblpPr\b[^>]*\/>/g;
+  const matches1 = modifiedXml.match(tblpPrRe);
+  if (matches1) tblFloatCount = matches1.length;
+  modifiedXml = modifiedXml.replace(tblpPrRe, '');
+
+  // 4b: 表格内的超链接已在Pass 2中全局处理
+  // 这里检查w:tbl内的w:hyperlink (已经由Pass 2处理, 仅统计)
+  // Pass 2已经全局处理了所有w:hyperlink, 此处不再重复
+
+  return { xml: modifiedXml, tblFloatCount, tblHyperlinkCount: 0 };
+}
+
+// ==================== 主转换流程 ====================
+async function runConversion() {
+  if (!currentFile) return;
+  showSpinner('正在读取文档…');
+  resetOutput();
+
+  try {
+    const arrayBuffer = await currentFile.arrayBuffer();
+    fileZip = await JSZip.loadAsync(arrayBuffer);
+
+    // 读取核心文件
+    const docXmlStr = await fileZip.file('word/document.xml')?.async('string');
+    if (!docXmlStr) throw new Error('无法读取 word/document.xml，请确认文件是有效的 .docx 格式');
+
+    const stylesStr = await fileZip.file('word/styles.xml')?.async('string') || '';
+    const relsStr = await fileZip.file('word/_rels/document.xml.rels')?.async('string') || '';
+    const contentTypesStr = await fileZip.file('[Content_Types].xml')?.async('string') || '';
+
+    // 解析关系映射
+    const parser = new DOMParser();
+    const relsXml = relsStr ? parser.parseFromString(relsStr, 'application/xml') : null;
+
+    // 统计原始元素
+    const anchorMatches = docXmlStr.match(/<wp:anchor\b/g);
+    const hlinkMatches = docXmlStr.match(/<a:hlinkClick\b/g);
+    const hyperlinkMatches = docXmlStr.match(/<w:hyperlink\b/g);
+    const oleMatches = docXmlStr.match(/<o:OLEObject\b/g) || docXmlStr.match(/<OLEObject\b/g);
+    const tblpPrMatches = docXmlStr.match(/<w:tblpPr\b/g);
+
+    const origAnchors = anchorMatches ? anchorMatches.length : 0;
+    const origHlinks = hlinkMatches ? hlinkMatches.length : 0;
+    const origHyperlinks = hyperlinkMatches ? hyperlinkMatches.length : 0;
+    const origOles = oleMatches ? oleMatches.length : 0;
+    const origTblFloat = tblpPrMatches ? tblpPrMatches.length : 0;
+
+    conversionStats = {
+      origAnchors, origHlinks, origHyperlinks, origOles, origTblFloat,
+      convertedAnchors: 0, removedHlinks: 0, removedHyperlinks: 0,
+      convertedOles: 0, cleanedTblFloat: 0,
+      extraImagesAdded: 0
+    };
+
+    let workingXml = docXmlStr;
+    let workingRels = relsStr;
+    let workingContentTypes = contentTypesStr;
+
+    // ===== Pass 3 (前置): OLE对象→预览图 (先处理OLE, 避免anchor转换影响DOM结构) =====
+    showSpinner('Pass 3/4: OLE对象 → 内联图片…');
+    const docXml = parser.parseFromString(workingXml, 'application/xml');
+    const { xml: oleMarkedXml, oleList } = findAndMarkOleObjects(docXml, relsXml, workingXml);
+    // findAndMarkOleObjects 已包含 XML 声明, 使用前清理
+    workingXml = oleMarkedXml;
+
+    let oleToInline = [];
+    if (oleList.length > 0) {
+      const pass3 = await convertOleObjects(workingXml, oleList, fileZip);
+      workingXml = pass3.xml;
+      conversionStats.convertedOles = pass3.oleCount;
+      oleToInline = pass3.oleToInline;
+
+      if (oleToInline.length > 0) {
+        // 添加图片关系到 rels
+        let relsInsert = '';
+        oleToInline.forEach(o => {
+          const mediaName = 'ole_preview_' + o.relId + '.' + (o.ext || 'wmf');
+          const mediaPath = 'word/media/' + mediaName;
+          fileZip.file(mediaPath, o.base64, { base64: true });
+          relsInsert += `<Relationship Id="${o.relId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${mediaName}"/>`;
+
+          // 更新 [Content_Types].xml 添加图片类型
+          const extMap = { wmf: 'wmf', emf: 'emf', png: 'png', jpg: 'jpeg', jpeg: 'jpeg', gif: 'gif', bmp: 'bmp', svg: 'svg' };
+          const ctExt = extMap[o.ext] || o.ext;
+          if (workingContentTypes && !workingContentTypes.includes('Extension="' + ctExt + '"')) {
+            workingContentTypes = workingContentTypes.replace(
+              /<\/Types>/,
+              '<Default Extension="' + ctExt + '" ContentType="image/' + (ctExt === 'wmf' ? 'x-wmf' : ctExt === 'emf' ? 'x-emf' : ctExt) + '"/></Types>'
+            );
+          }
+        });
+        workingRels = workingRels.replace(/<\/Relationships>/, relsInsert + '</Relationships>');
+      }
+    }
+    document.getElementById('step-3').classList.add('done');
+
+    // ===== Pass 1: 浮动→内联 =====
+    showSpinner('Pass 1/4: 浮动元素 → 内联…');
+    const pass1 = convertFloatingToInline(workingXml);
+    workingXml = pass1.xml;
+    conversionStats.convertedAnchors = pass1.count;
+    document.getElementById('step-1').classList.add('done');
+
+    // ===== Pass 2: 移除超链接 =====
+    showSpinner('Pass 2/4: 移除超链接…');
+    const pass2 = removeHyperlinks(workingXml, workingRels);
+    workingXml = pass2.xml;
+    workingRels = pass2.rels;
+    conversionStats.removedHlinks = pass2.hlinkCount;
+    conversionStats.removedHyperlinks = pass2.hyperlinkCount;
+    document.getElementById('step-2').classList.add('done');
+
+    // ===== Pass 4: 表格清理 =====
+    showSpinner('Pass 4/4: 表格清理…');
+    const pass4 = cleanTables(workingXml);
+    workingXml = pass4.xml;
+    conversionStats.cleanedTblFloat = pass4.tblFloatCount;
+    document.getElementById('step-4').classList.add('done');
+
+    // ===== 打包输出 =====
+    showSpinner('正在打包输出.docx…');
+    fileZip.file('word/document.xml', workingXml);
+    if (workingRels) fileZip.file('word/_rels/document.xml.rels', workingRels);
+    if (workingContentTypes) fileZip.file('[Content_Types].xml', workingContentTypes);
+
+    // 生成Blob
+    outputBlob = await fileZip.generateAsync({
+      type: 'blob',
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      compression: 'DEFLATE',
+      compressionOptions: { level: 6 }
+    });
+
+    document.getElementById('step-5').classList.add('done');
+
+    // 显示报告
+    displayReport();
+    hideSpinner();
+
+  } catch (err) {
+    hideSpinner();
+    outputDetail.innerHTML = '<div class="error-box">❌ 转换失败: ' + escapeHtml(err.message) + '</div>';
+    outputArea.classList.add('show');
+    console.error(err);
+  }
+}
+
+// ==================== 报告显示 ====================
+function displayReport() {
+  const s = conversionStats;
+  if (!s) return;
+
+  // 统计汇总
+  const totalChanges = s.convertedAnchors + s.removedHlinks + s.removedHyperlinks + s.convertedOles + s.cleanedTblFloat;
+  const hasChanges = totalChanges > 0;
+
+  summaryGrid.innerHTML = `
+    <div class="summary-item"><div class="count">${s.convertedAnchors}</div><div class="label">浮动→内联</div></div>
+    <div class="summary-item modified"><div class="count">${s.removedHlinks}</div><div class="label">图片超链接移除</div></div>
+    <div class="summary-item modified"><div class="count">${s.removedHyperlinks}</div><div class="label">文本超链接移除</div></div>
+    <div class="summary-item modified"><div class="count">${s.convertedOles}</div><div class="label">OLE→图片</div></div>
+    <div class="summary-item"><div class="count">${s.cleanedTblFloat}</div><div class="label">浮动表格清理</div></div>
+  `;
+
+  // 详细报告
+  let reportHtml = '';
+  if (s.origAnchors === 0 && s.origHlinks === 0 && s.origHyperlinks === 0 && s.origOles === 0 && s.origTblFloat === 0) {
+    reportHtml += '<li class="info">ℹ 未检测到需要处理的悬浮元素或超链接，文档可能已经是纯图格式</li>';
+  } else {
+    if (s.convertedAnchors > 0) {
+      reportHtml += `<li>✅ 已将 <strong>${s.convertedAnchors}</strong> 个浮动图片/形状转换为内联格式（wp:anchor → wp:inline）</li>`;
+    } else if (s.origAnchors > 0) {
+      reportHtml += `<li class="warn">⚠ 检测到 ${s.origAnchors} 个浮动元素，但转换未全部成功</li>`;
+    }
+
+    if (s.removedHlinks > 0) {
+      reportHtml += `<li>✅ 已移除 <strong>${s.removedHlinks}</strong> 个图片上的超链接（a:hlinkClick）</li>`;
+    }
+
+    if (s.removedHyperlinks > 0) {
+      reportHtml += `<li>✅ 已清除 <strong>${s.removedHyperlinks}</strong> 个文本超链接（w:hyperlink），文本内容已保留</li>`;
+    }
+
+    if (s.convertedOles > 0) {
+      reportHtml += `<li>✅ 已将 <strong>${s.convertedOles}</strong> 个OLE对象（ChemDraw公式等）替换为内联预览图</li>`;
+    } else if (s.origOles > 0) {
+      reportHtml += `<li class="warn">⚠ 检测到 ${s.origOles} 个OLE对象，但未能提取预览图（可能为链接式OLE对象）</li>`;
+    }
+
+    if (s.cleanedTblFloat > 0) {
+      reportHtml += `<li>✅ 已清理 <strong>${s.cleanedTblFloat}</strong> 个浮动表格的定位属性</li>`;
+    }
+  }
+
+  if (!hasChanges) {
+    reportHtml += '<li class="info">ℹ 文档无需转换，但仍可下载（原始文档副本）</li>';
+  }
+
+  // 警告
+  if (s.origOles > 0 && s.convertedOles === 0) {
+    reportHtml += '<li class="warn">⚠ 文档包含OLE对象但无预览图。请在Word中打开原文档，确认公式/结构式正常显示</li>';
+  }
+
+  reportHtml += `<li class="info">ℹ 原始检测: ${s.origAnchors}浮动 · ${s.origHlinks}图片链接 · ${s.origHyperlinks}文本链接 · ${s.origOles}OLE对象 · ${s.origTblFloat}浮动表格</li>`;
+
+  reportList.innerHTML = reportHtml;
+  reportArea.classList.add('show');
+
+  // 输出详情
+  let detail = '══════════════════════════════\n';
+  detail += '  Word悬浮元素扁平化 — 转换报告\n';
+  detail += '══════════════════════════════\n\n';
+  detail += `文件名: ${currentFile.name}\n`;
+  detail += `文件大小: ${formatSize(currentFile.size)}\n`;
+  detail += `输出大小: ${outputBlob ? formatSize(outputBlob.size) : 'N/A'}\n\n`;
+  detail += '— 转换统计 —\n';
+  detail += `  浮动→内联 (wp:anchor→wp:inline): ${s.convertedAnchors}\n`;
+  detail += `  图片超链接移除 (a:hlinkClick):     ${s.removedHlinks}\n`;
+  detail += `  文本超链接移除 (w:hyperlink):      ${s.removedHyperlinks}\n`;
+  detail += `  OLE对象→图片:                    ${s.convertedOles}\n`;
+  detail += `  浮动表格清理 (w:tblpPr):          ${s.cleanedTblFloat}\n`;
+  detail += `  总变更数:                         ${totalChanges}\n\n`;
+  detail += '— 输出格式 —\n';
+  detail += '  .docx (Office Open XML)\n';
+  detail += '  兼容 Word 2007 及以上版本\n';
+
+  outputDetail.textContent = detail;
+  outputArea.classList.add('show');
+
+  // 显示下载按钮
+  btnDownload.style.display = 'inline-block';
+}
+
+// ==================== 按钮事件 ====================
+btnConvert.addEventListener('click', () => {
+  if (!currentFile) return;
+  runConversion();
+});
+
+btnDownload.addEventListener('click', () => {
+  if (!outputBlob) return;
+
+  const origName = currentFile.name.replace(/\.docx$/i, '');
+  const downloadName = origName + '_纯图扁平化.docx';
+
+  const url = URL.createObjectURL(outputBlob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = downloadName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+});
+
+})();
+</script>
+</body>
+</html>
