@@ -811,11 +811,11 @@ const Renderer={
     const cm={};for(const c of cats)cm[c.id]=c;
     const pm={};for(const p of projects)pm[p.id]=p;
 
-    // Dashboard always shows ALL records — independent of sidebar project selection
-    const allTxns=txns;  // use ALL transactions, not filtered by active project
+    // Dashboard filters by active project (shows all when '__all__' is selected) — independent of sidebar project selection
+    const allTxns=Calculator._filterByProject(txns,ap);
     const allTotal=allTxns.reduce((s,t)=>s+t.amount,0);
     const allCount=allTxns.length;
-    const months=Calculator.getAvailableMonths(txns);
+    const months=Calculator.getAvailableMonths(allTxns);
     const monthCount=months.length;
 
     // Average per month
@@ -824,7 +824,7 @@ const Renderer={
     // Project ranking (all-time)
     const projExp=Calculator.getExpenseByProject(txns,Utils.getCurrentMonth());
     // Also compute all-time project ranking
-    const projExpAll={};for(const t of allTxns){const pid=t.projectId||'__none__';projExpAll[pid]=(projExpAll[pid]||0)+t.amount}
+    const projExpAll={};for(const t of txns){const pid=t.projectId||'__none__';projExpAll[pid]=(projExpAll[pid]||0)+t.amount}
     const projRank=Object.entries(projExpAll).filter(([pid])=>pid!=='__none__').map(([pid,v])=>({id:pid,name:(pm[pid]||{name:'已删除项目'}).name,icon:(pm[pid]||{icon:'❓'}).icon,color:(pm[pid]||{color:'#B2BEC3'}).color,value:v})).sort((a,b)=>b.value-a.value);
     const unassignedExp=projExpAll['__none__']||0;
 
