@@ -851,6 +851,13 @@ const Renderer={
 
     // Build HTML
     let h='';
+    // Month indicator + total count bar
+    const [my,mm]=month.split('-');
+    const allTimeTotal=Calculator.getTotalExpense(txns,ap),allTimeCount=Calculator._filterByProject(txns,ap).length;
+    h+=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--spacing-md);padding:10px 16px;background:var(--color-primary-light);border-radius:var(--radius-md);font-size:var(--font-size-sm);">
+      <span>📅 当前查看：<strong>${parseInt(my)}年${parseInt(mm)}月</strong>（顶部月份选择器可切换）</span>
+      <span>📋 累计：<strong>${Utils.formatCurrency(allTimeTotal)}</strong> / <strong>${allTimeCount}笔</strong></span>
+    </div>`;
     // Stats cards
     h+=`<div class="stats-grid">
       <div class="stat-card"><div class="stat-value expense" id="statTotal">${Utils.formatCurrency(monthTotal)}</div><div class="stat-label">本月支出</div>${delta!==0?`<span class="stat-delta ${deltaUp?'up':'down'}">${deltaUp?'↑':'↓'} ${Math.abs(delta)}% 环比</span>`:''}</div>
@@ -914,19 +921,13 @@ const Renderer={
 
     // Update filter dropdowns
     const months=Calculator.getAvailableMonths(txns);
-    let mo='<option value="all">全部月份</option>';
-    for(const m of months)mo+=`<option value="${m}" ${fm===m?'selected':''}>${m}</option>`;
-    Utils.$('#filterMonth').innerHTML=mo;
+    Utils.$('#filterMonth').innerHTML='<option value="all"'+(fm==='all'?' selected':'')+'>全部月份（'+txns.length+'条）</option>'+months.map(m=>`<option value="${m}" ${fm===m?'selected':''}>${m}</option>`).join('');
 
-    let co='<option value="all">全部分类</option>';
-    for(const c of cats)co+=`<option value="${c.id}" ${fc===c.id?'selected':''}>${c.icon} ${c.name}</option>`;
-    Utils.$('#filterCategory').innerHTML=co;
+    Utils.$('#filterCategory').innerHTML='<option value="all">全部分类</option>'+cats.map(c=>`<option value="${c.id}" ${fc===c.id?'selected':''}>${c.icon} ${c.name}</option>`).join('');
 
-    let po='<option value="all">全部项目</option><option value="__none__">仅未归属</option>';
-    for(const p of projects)po+=`<option value="${p.id}" ${fp===p.id?'selected':''}>${p.icon} ${p.name}</option>`;
-    Utils.$('#filterProject').innerHTML=po;
+    Utils.$('#filterProject').innerHTML='<option value="all">全部项目</option><option value="__none__"'+('__none__'===fp?' selected':'')+'>仅未归属</option>'+projects.map(p=>`<option value="${p.id}" ${fp===p.id?'selected':''}>${p.icon} ${Renderer._esc(p.name)}</option>`).join('');
 
-    Utils.$('#filterResultCount').textContent=`共 ${filtered.length} 条`;
+    Utils.$('#filterResultCount').textContent=txns.length!==filtered.length?`筛选 ${filtered.length} / 共 ${txns.length} 条`:`共 ${txns.length} 条`;
 
     // Active filter tags
     let tags='';
