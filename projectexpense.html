@@ -818,9 +818,6 @@ const Renderer={
     const months=Calculator.getAvailableMonths(allTxns);
     const monthCount=months.length;
 
-    // Average per month
-    const avgPerMonth=monthCount>0?allTotal/monthCount:0;
-
     // Project ranking (all-time)
     const projExp=Calculator.getExpenseByProject(txns,Utils.getCurrentMonth());
     // Also compute all-time project ranking
@@ -860,7 +857,6 @@ const Renderer={
     // Stats cards (all-time)
     h+=`<div class="stats-grid">
       <div class="stat-card"><div class="stat-value expense">${Utils.formatCurrency(allTotal)}</div><div class="stat-label">累计支出</div><div class="stat-sub">全部时间</div></div>
-      <div class="stat-card"><div class="stat-value">${Utils.formatCurrency(avgPerMonth)}</div><div class="stat-label">月均支出</div><div class="stat-sub">${monthCount}个月</div></div>
       <div class="stat-card"><div class="stat-value">${allCount}</div><div class="stat-label">支出笔数</div>${allCount>0?`<div class="stat-sub">平均 ${Utils.formatCurrency(allCount>0?allTotal/allCount:0)}/笔</div>`:''}</div>
       <div class="stat-card"><div class="stat-value">${projects.length}</div><div class="stat-label">活跃项目</div>${unassignedExp>0?`<div class="stat-sub">未归属 ${Utils.formatCurrency(unassignedExp)}</div>`:''}</div>
     </div>`;
